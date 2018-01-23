@@ -6,7 +6,7 @@ import numpy as np
 from dataset import ImageDataSet, MaskedTensorDataset
 from torch.utils.data import DataLoader, TensorDataset
 from torch.autograd import Variable
-from Networks import ALTNet, ConvNet
+from Networks import ALTNet, ConvNet, ResNet
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -25,7 +25,7 @@ def visualizeResults(out, gt):
     :return:
     """
     visualization.Visualize2D(out.cpu().data[0], gt.cpu().data[0],
-                              env="ImageUpsampling_Conv", indexrange=[20, 50])
+                              env="ImageUpsampling_ResNet", indexrange=[20, 50])
     pass
 
 def main(a):
@@ -44,11 +44,13 @@ def main(a):
         inputDataset= ImageDataSet(a.input, dtype=np.float32)
         gtDataset   = ImageDataSet(a.train, dtype=np.float32)
         trainingSet = TensorDataset(inputDataset, gtDataset)
-        loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True)
+        loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=False, num_workers=4)
+        print inputDataset
+        print gtDataset
 
         # Load Checkpoint or create new network
         #-----------------------------------------
-        net = ConvNet()
+        net = ResNet(inputDataset[0].size()[0], gtDataset[0].size()[0], 6)
         if os.path.isfile(a.checkpoint):
             LogPrint("Loading checkpoint " + a.checkpoint)
             net.load_state_dict(torch.load(a.checkpoint))
@@ -79,8 +81,9 @@ def main(a):
                 else:
                     s, g = samples
 
-                out = net.forward(s.unsqueeze(1)).squeeze()
-                loss = criterion(out, g)
+                out = net.forward(s.float()).squeeze()
+                loss = (criterion(out, g) - criterion(s, g))/ criterion(s, g)
+                # loss = criterion(out,g)
                 loss.backward()
                 optimizer.step()
                 E.append(loss.data[0])
@@ -88,7 +91,7 @@ def main(a):
                 if a.plot:
                     visualizeResults(out, g)
             losses.append(E)
-            torch.save(net.state_dict(), "./Backup/checkpoint_CONV.pt")
+            torch.save(net.state_dict(), "./Backup/checkpoint_RESNET.pt")
             print "[Epoch %04d] Loss: %.010f"%(i, np.array(E).mean())
 
              # Decay learning rate
