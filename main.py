@@ -6,7 +6,7 @@ import numpy as np
 from dataset import ImageDataSet, MaskedTensorDataset
 from torch.utils.data import DataLoader, TensorDataset
 from torch.autograd import Variable
-from Networks import ALTNet, ConvNet
+from Networks import ALTNet, ConvNet, ResNet
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -25,7 +25,7 @@ def visualizeResults(out, gt):
     :return:
     """
     visualization.Visualize2D(out.cpu().data[0], gt.cpu().data[0],
-                              env="ImageUpsampling_Conv", indexrange=[20, 50])
+                              env="ImageUpsampling_ResNet", indexrange=[80, 100], axis=2)
     pass
 
 def main(a):
@@ -44,11 +44,11 @@ def main(a):
         inputDataset= ImageDataSet(a.input, dtype=np.float32)
         gtDataset   = ImageDataSet(a.train, dtype=np.float32)
         trainingSet = TensorDataset(inputDataset, gtDataset)
-        loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True)
+        loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True, num_workers=4)
 
         # Load Checkpoint or create new network
         #-----------------------------------------
-        net = ConvNet()
+        net = ResNet(inputDataset[0].size()[1], gtDataset[0].size()[1], 11)
         if os.path.isfile(a.checkpoint):
             LogPrint("Loading checkpoint " + a.checkpoint)
             net.load_state_dict(torch.load(a.checkpoint))
@@ -65,8 +65,8 @@ def main(a):
         optimizer = optim.SGD([{'params': net.parameters(),
                                 'lr': lr, 'momentum': mm}])
         if a.usecuda:
-            criterion.cuda()
-            net.cuda()
+            criterion = criterion.cuda()
+            net = net.cuda()
             # optimizer.cuda()
 
         losses = []
@@ -79,8 +79,9 @@ def main(a):
                 else:
                     s, g = samples
 
-                out = net.forward(s.unsqueeze(1)).squeeze()
-                loss = criterion(out, g)
+                out = net.forward(s.transpose(1, 2).float()).squeeze().transpose(1, 2)
+                # loss = (criterion(out, g) - criterion(s, g))/ criterion(s, g)
+                loss = criterion(out,g)
                 loss.backward()
                 optimizer.step()
                 E.append(loss.data[0])
@@ -88,7 +89,7 @@ def main(a):
                 if a.plot:
                     visualizeResults(out, g)
             losses.append(E)
-            torch.save(net.state_dict(), "./Backup/checkpoint_CONV.pt")
+            torch.save(net.state_dict(), "./Backup/checkpoint_RESNET.pt")
             print "[Epoch %04d] Loss: %.010f"%(i, np.array(E).mean())
 
              # Decay learning rate
@@ -97,8 +98,49 @@ def main(a):
                     pg['lr'] = pg['lr'] * np.exp(-i * float(a.epoch)  * a.decay / float(a.epoch))
 
 
+    # Evaluation mode
+    else:
+        import SimpleITK as sitk
+
+        if not os.path.isdir(a.output):
+            try:
+                LogPrint("Cannot find output directory, creating...")
+                os.mkdir(a.output)
+            except:
+                LogPrint("Cannot create new directory")
+                return
+        assert os.path.isdir(a.output), "Ground truth directory cannot be opened!"
+        inputDataset= ImageDataSet(a.input, dtype=np.float32)
+        loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False, num_workers=4)
+        net = ResNet(inputDataset[0].size()[0], inputDataset[0].size()[0], 11)
+        if os.path.isfile(a.checkpoint):
+            LogPrint("Loading parameters " + a.checkpoint)
+            net.load_state_dict(torch.load(a.checkpoint))
+            net.training = False
+        else:
+            LogPrint("Parameters file cannot be opened!")
+            return
 
 
+        if a.usecuda:
+            net = net.cuda()
+
+        results = []
+        for i, samples in enumerate(loader):
+            s = Variable(samples)
+            if a.usecuda:
+                s = s.cuda()
+            out = net.forward(s)
+            for j in xrange(out.data.size()[0]):
+                results.append(out[i].data.cpu().numpy())
+
+        for i, r in enumerate(results):
+            im = sitk.GetImageFromArray(r)
+            metadata = inputDataset.metadata[i]
+            im = ImageDataSet.WrapImageWithMetaData(im, metadata)
+            outfname = a.output + "/" + os.path.basename(inputDataset.dataSourcePath[i])
+            LogPrint("Writing to " + outfname)
+            sitk.WriteImage(im, outfname)
 
     pass
 
