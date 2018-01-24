@@ -96,9 +96,9 @@ Recursively resample the images
 #     ResampleImage(ftarget, fref, "RES-", 2)
 
 def main():
-    dir = "../SBL_2D_3D/10.3D_BrainMask"
+    dir = "../SBL_2D_3D/12.COR"
     refdir = "../SBL_2D_3D/13.3D_Resampled"
-    outdir = "../SBL_2D_3D/14.BrainMask_Resampled"
+    outdir = "../SBL_2D_3D/15.COR_Resampled"
 
     if not os.path.isdir(outdir):
         os.mkdir(outdir)
