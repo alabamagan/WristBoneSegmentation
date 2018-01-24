@@ -3,13 +3,12 @@ import os
 import logging
 import numpy as np
 
-from dataset import ImageDataSet, MaskedTensorDataset
+from MedImgDataset.ImageData import ImageDataSet
 from torch.utils.data import DataLoader, TensorDataset
 from torch.autograd import Variable
-from Networks import ALTNet, ConvNet, ResNet
+from Networks import ResNet
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 import torch
 import visualization
 

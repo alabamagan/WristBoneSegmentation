@@ -1,7 +1,5 @@
 import visdom
 import numpy as np
-import torchvision
-import torch.nn as nn
 from torch.tensor import _TensorBase
 
 vis = visdom.Visdom(port=80)
@@ -94,7 +92,7 @@ def Visualize2D(*args, **kwargs):
                    nrow=nrow, env=env, win=prefix+"%i"%i)
 
 # Testing
-from dataset import ImageDataSet
+from MedImgDataset.ImageData import ImageDataSet
 
 d1 = ImageDataSet("./SBL_2D_3D/14.BrainMask_Resampled")
 d2 = ImageDataSet("./SBL_2D_3D/13.3D_Resampled")
