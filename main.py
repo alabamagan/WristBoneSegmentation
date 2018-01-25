@@ -3,13 +3,12 @@ import os
 import logging
 import numpy as np
 
-from dataset import ImageDataSet, MaskedTensorDataset
+from MedImgDataset.ImageData import ImageDataSet, MaskedTensorDataset
 from torch.utils.data import DataLoader, TensorDataset
 from torch.autograd import Variable
-from Networks import ALTNet, ConvNet, ResNet
+from Networks import ResNet
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 import torch
 import visualization
 
@@ -24,8 +23,8 @@ def visualizeResults(out, gt):
     :param Varialbe gt:
     :return:
     """
-    visualization.Visualize2D(out.cpu().data[0], gt.cpu().data[0],
-                              env="ImageUpsampling_ResNet", indexrange=[80, 100], axis=2)
+    visualization.Visualize2D(out.cpu().data, gt.cpu().data,
+                              env="ImageUpsampling_ResNet", indexrange=[0, 20], axis=0)
     pass
 
 def main(a):
@@ -33,6 +32,7 @@ def main(a):
     # Error Check
     #-----------------
     mode = 0 # Training Mode
+    print "Start"
     assert os.path.isdir(a.input), "Input data directory not exist!"
     if a.train is None:
         mode = 1 # Eval mode
@@ -41,14 +41,18 @@ def main(a):
     # Training Mode
     if not mode:
         assert os.path.isdir(a.train), "Ground truth directory cannot be opened!"
-        inputDataset= ImageDataSet(a.input, dtype=np.float32)
-        gtDataset   = ImageDataSet(a.train, dtype=np.float32)
-        trainingSet = TensorDataset(inputDataset, gtDataset)
+        inputDataset= ImageDataSet(a.input, dtype=np.float32, loadbySlice=1)
+        gtDataset   = ImageDataSet(a.train, dtype=np.float32, loadbySlice=1)
+        if os.path.isdir(a.mask):
+            maskDataset = ImageDataSet(a.mask, dtype=np.uint8, loadbySlice=0)
+            trainingSet = MaskedTensorDataset(inputDataset, gtDataset, maskDataset)
+        else:
+            trainingSet = TensorDataset(inputDataset, gtDataset)
         loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True, num_workers=4)
 
         # Load Checkpoint or create new network
         #-----------------------------------------
-        net = ResNet(inputDataset[0].size()[1], gtDataset[0].size()[1], 11)
+        net = ResNet(1, 1, 11)
         if os.path.isfile(a.checkpoint):
             LogPrint("Loading checkpoint " + a.checkpoint)
             net.load_state_dict(torch.load(a.checkpoint))
@@ -73,13 +77,24 @@ def main(a):
         for i in xrange(a.epoch):
             E = []
             for index, samples in enumerate(loader):
+                m = None
                 if a.usecuda:
                     s = Variable(samples[0]).cuda()
                     g = Variable(samples[1]).cuda()
+                    if os.path.isdir(a.mask):
+                        m = Variable(samples[2]).cuda().float()
                 else:
-                    s, g = samples
+                    s, g = Variable(samples[0]), Variable(samples[1])
+                    if os.path.isdir(a.mask):
+                        m = Variable(samples[2]).float()
 
-                out = net.forward(s.transpose(1, 2).float()).squeeze().transpose(1, 2)
+                # out = net.forward(s.transpose(1, 2).float()).squeeze().transpose(1, 2)
+                out = net.forward(s.unsqueeze(1)).squeeze()
+                if m:
+                    out = out * m
+                    g = g * m
+                    s = s * m
+
                 # loss = (criterion(out, g) - criterion(s, g))/ criterion(s, g)
                 loss = criterion(out,g)
                 loss.backward()
@@ -87,7 +102,7 @@ def main(a):
                 E.append(loss.data[0])
                 print "\t[Step %04d] Loss: %.010f"%(index, loss.data[0])
                 if a.plot:
-                    visualizeResults(out, g)
+                    visualizeResults(s, g)
             losses.append(E)
             torch.save(net.state_dict(), "./Backup/checkpoint_RESNET.pt")
             print "[Epoch %04d] Loss: %.010f"%(i, np.array(E).mean())
@@ -163,6 +178,8 @@ if __name__ == '__main__':
                         help="Specify how many steps to run per epoch.")
     parser.add_argument("-b", "--batchsize", dest='batchsize', action='store', type=int, default=5,
                         help="Specify batchsize in each iteration.")
+    parser.add_argument("-m", "--lossMask", dest='mask', action='store', type=str, default="",
+                        help="Includes a mask dataset to cover the output before evaluating loss.")
     parser.add_argument("--load", dest='checkpoint', action='store', default='',
                         help="Specify network checkpoint.")
     parser.add_argument("--useCUDA", dest='usecuda', action='store_true',default=False,

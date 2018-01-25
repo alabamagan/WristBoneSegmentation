@@ -31,13 +31,12 @@ class ResNet(nn.Module):
     def __init__(self, inchan, outchan, depth):
         super(ResNet, self).__init__()
         self.depth = depth
-        self.initkern = Kernel(inchan, inchan)
-        self.kerns = nn.Sequential(*[ResKernel(inchan) for i in xrange((depth - 1)/2)])
-        self.outkern = Kernel(outchan, outchan)
+        self.initkern = Kernel(inchan, 64)
+        self.kerns = nn.Sequential(*[ResKernel(64) for i in xrange((depth - 1)/2)])
+        self.outkern = Kernel(64, outchan)
 
     def forward(self, x):
         c = self.initkern(x)
-        c = c + x
         c = self.kerns.forward(c)
         c = self.outkern(c)
         c = c + x
