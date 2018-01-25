@@ -91,9 +91,9 @@ def Visualize2D(*args, **kwargs):
         vis.images(np.expand_dims(temp, 1)[newRange[0]:newRange[1]],
                    nrow=nrow, env=env, win=prefix+"%i"%i)
 
-# Testing
-from MedImgDataset.ImageData import ImageDataSet
-
-d1 = ImageDataSet("./SBL_2D_3D/14.BrainMask_Resampled")
-d2 = ImageDataSet("./SBL_2D_3D/13.3D_Resampled")
-Visualize2D(d2[5], d1[5], axis=1, env="Test", indexrange=[105, 125])
+# # Testing
+# from MedImgDataset.ImageData import ImageDataSet
+#
+# d1 = ImageDataSet("./SBL_2D_3D/14.BrainMask_Resampled")
+# d2 = ImageDataSet("./SBL_2D_3D/13.3D_Resampled")
+# Visualize2D(d2[5], d1[5], axis=1, env="Test", indexrange=[105, 125])
