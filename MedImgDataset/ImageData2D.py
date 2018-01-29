@@ -50,6 +50,7 @@ class ImageDataSet2D(Dataset):
         self.length = len(self.data)
         # self.data = cat(self.data, dim=0).squeeze().contiguous()
         # self.length = self.data.size()[0]
+        # print self.data.size()
 
 
     def __getitem__(self, item):
@@ -74,10 +75,11 @@ class ImageDataSet2D(Dataset):
             #
             #     printable[keys].append(self.metadata[i][keys])
             printable['Size'].append([self.__getitem__(i).size()[0],
-                                      self.__getitem__(i).size()[1],
-                                      self.__getitem__(i).size()[2]])
+                                      self.__getitem__(i).size()[1]])
 
         data = df(data=printable)
         s += data.to_string()
         return s
 
+    def __len__(self):
+        return self.length

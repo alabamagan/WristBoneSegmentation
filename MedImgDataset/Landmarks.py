@@ -27,12 +27,17 @@ class Landmarks(Dataset):
         self.d = pd.read_csv(self.root_dir)
         for i, row in self.d.iterrows():
             f = row['File']
-            r, g, b, y = [eval(row[keys]) for keys in ['Proximal Phalanx',
-                                                       'Sesamoid',
+            # r, g, b, y = [eval(row[keys]) for keys in ['Proximal Phalanx',
+            #                                            'Sesamoid',
+            #                                            'Metacarpal',
+            #                                            'Distal Phalanx']]
+            # self.data.append(from_numpy(np.array([r, g, b, y], np.float)).unsqueeze(0))
+            r, b, y = [eval(row[keys]) for keys in ['Proximal Phalanx',
+                                                       # 'Sesamoid',
                                                        'Metacarpal',
                                                        'Distal Phalanx']]
+            self.data.append(from_numpy(np.array([r, b, y], np.float)).unsqueeze(0))
             self.dataReference.append(f)
-            self.data.append(from_numpy(np.array([r, g, b, y], np.float)).unsqueeze(0))
 
         self.data = cat(self.data)
         self.length = self.data.size()[0]
@@ -48,7 +53,7 @@ class Landmarks(Dataset):
         return s
 
 
-if __name__ == '__main__':
-    lm =  Landmarks("./TOCI/04.Resized/Landmarks.csv")
-    print lm
-    print lm[0:5]
+# if __name__ == '__main__':
+#     lm =  Landmarks("./TOCI/04.Resized/Landmarks.csv")
+#     print lm
+#     print lm[0:5]

@@ -91,6 +91,33 @@ def Visualize2D(*args, **kwargs):
         vis.images(np.expand_dims(temp, 1)[newRange[0]:newRange[1]],
                    nrow=nrow, env=env, win=prefix+"%i"%i)
 
+
+def VisualizeMapWithLandmarks(images, landmarks, env="TOCI", N=20):
+    """
+    Description
+    -----------
+      Visualize images landmarkds
+    :param np.ndarray images:
+    :param np.ndarray landmarks:
+    :return:
+    """
+    from skimage.draw import circle
+
+    if images.ndim == 3:
+        assert images.shape[0] == landmarks.shape[0]
+        for i in xrange(0, np.min([N, images.shape[0]])):
+            for j in xrange(landmarks.shape[1]):
+                rr, cc = circle(landmarks[i,j,0], landmarks[i,j,1], 3, shape=images.shape[1:])
+                images[i,rr,cc] = 255
+        images = Normalize(images, 0, 255)
+        vis.images(images[:np.min([N, images.shape[0]]),None,:,:], nrow=4, env=env, win="Image")
+    else:
+        for i in xrange(landmarks.shape[0]):
+            rr, cc = circle(landmarks[i,0], landmarks[i,1], 3, shape=images.shape)
+            images[rr, cc] = 255
+        vis.image(images, env=env, win="Image")
+
+
 # # Testing
 # from MedImgDataset.ImageData import ImageDataSet
 #

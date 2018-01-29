@@ -3,10 +3,10 @@ import os
 import logging
 import numpy as np
 
-from MedImgDataset.ImageData import ImageDataSet
+from MedImgDataset import ImageDataSet2D, ImageFeaturePair, Landmarks
 from torch.utils.data import DataLoader, TensorDataset
 from torch.autograd import Variable
-from Networks import ResNet
+from Networks import ConvNet
 import torch.nn as nn
 import torch.optim as optim
 import torch
@@ -23,8 +23,8 @@ def visualizeResults(out, gt):
     :param Varialbe gt:
     :return:
     """
-    visualization.Visualize2D(out.cpu().data[0], gt.cpu().data[0],
-                              env="ImageUpsampling_ResNet", indexrange=[80, 100], axis=2)
+    visualization.VisualizeMapWithLandmarks(out.cpu().data.numpy(), gt.cpu().data.numpy(),
+                              env="TOCI_run")
     pass
 
 def main(a):
@@ -39,15 +39,18 @@ def main(a):
     ##############################
     # Training Mode
     if not mode:
-        assert os.path.isdir(a.train), "Ground truth directory cannot be opened!"
-        inputDataset= ImageDataSet(a.input, dtype=np.float32)
-        gtDataset   = ImageDataSet(a.train, dtype=np.float32)
-        trainingSet = TensorDataset(inputDataset, gtDataset)
+        assert os.path.isfile(a.train), "Ground truth directory cannot be opened!"
+        inputDataset= ImageDataSet2D(a.input, dtype=np.float32, verbose=True)
+        gtDataset   = Landmarks(a.train)
+        trainingSet = ImageFeaturePair(inputDataset, gtDataset)
         loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True, num_workers=4)
+
+        # print inputDataset
+        # return
 
         # Load Checkpoint or create new network
         #-----------------------------------------
-        net = ResNet(inputDataset[0].size()[1], gtDataset[0].size()[1], 11)
+        net = ConvNet(inputDataset[0].size()[1])
         if os.path.isfile(a.checkpoint):
             LogPrint("Loading checkpoint " + a.checkpoint)
             net.load_state_dict(torch.load(a.checkpoint))
@@ -76,19 +79,19 @@ def main(a):
                     s = Variable(samples[0]).cuda()
                     g = Variable(samples[1]).cuda()
                 else:
-                    s, g = samples
-
-                out = net.forward(s.transpose(1, 2).float()).squeeze().transpose(1, 2)
-                # loss = (criterion(out, g) - criterion(s, g))/ criterion(s, g)
-                loss = criterion(out,g)
+                    s, g = samples[0], samples[1].transpose(1, 2)
+                out = net.forward(s.unsqueeze(1))
+                # out = net.forward(s.transpose(1, 2).float()).squeeze().
+                # print out
+                loss = criterion(out,g.float())
                 loss.backward()
                 optimizer.step()
                 E.append(loss.data[0])
                 print "\t[Step %04d] Loss: %.010f"%(index, loss.data[0])
                 if a.plot:
-                    visualizeResults(out, g)
+                    visualizeResults(s, out)
             losses.append(E)
-            torch.save(net.state_dict(), "./Backup/checkpoint_RESNET.pt")
+            torch.save(net.state_dict(), "./Backup/checkpoint_ConvNet.pt")
             print "[Epoch %04d] Loss: %.010f"%(i, np.array(E).mean())
 
              # Decay learning rate
