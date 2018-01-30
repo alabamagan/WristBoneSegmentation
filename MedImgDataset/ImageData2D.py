@@ -13,7 +13,7 @@ class ImageDataSet2D(Dataset):
           This class read 2D images with png/jpg file extension in the specified folder into torch tensor.
 
         :param str rootdir:  Specify which directory to look into
-        :param str readmode: This argument is passed to @scipy.ndimage.imread
+        :param str readmode: This argument is passed to skimage.io.imread
         :param bool verbose: Set to True if you want verbose info
         :param type dtype:   The type to cast the tensors
         """
@@ -48,9 +48,6 @@ class ImageDataSet2D(Dataset):
             self.data.append(from_numpy(np.array(imread(f, mode=self.readmode), dtype=self.dtype)))
 
         self.length = len(self.data)
-        # self.data = cat(self.data, dim=0).squeeze().contiguous()
-        # self.length = self.data.size()[0]
-        # print self.data.size()
 
 
     def __getitem__(self, item):
@@ -83,3 +80,17 @@ class ImageDataSet2D(Dataset):
 
     def __len__(self):
         return self.length
+
+    def tonumpy(self):
+        assert self.length != 0
+        return cat([K.unsqueeze(0) for K in self.data], dim=0).numpy()
+
+if __name__ == '__main__':
+    import visdom as vis
+
+    v = vis.Visdom(port=80)
+
+    data = ImageDataSet2D("./TOCI/10.TestData/Resized_SAR", dtype=np.float, verbose=True, as_gray=True)
+    im = np.array([d.numpy()*255 for d in data.data], dtype=np.uint8)
+    im = np.tile(im[:,None,:,:], (1, 3, 1, 1))
+    v.images(im, env="Test", win="Image")

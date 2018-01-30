@@ -48,17 +48,18 @@ class ConvNet(nn.Module):
     def __init__(self, indim):
         super(ConvNet,self).__init__()
         self.indim = indim
-        self.kern1 = StandardConv(1, 32, kernsize=7)
-        self.kern2 = StandardConv(32, 64, kernsize=7)
-        self.kern3 = StandardConv(64, 128, kernsize=7)
-        self.kern4 = StandardConv(128, 64, kernsize=7)
-        self.kern5 = StandardConv(64, 32, kernsize=7)
-        self.kern6 = StandardConv(32, 16, kernsize=7)
-        self.kern7 = StandardConv(16, 16, kernsize=7)
-        self.kern8 = StandardConv(16, 6, kernsize=7)
-        self.kerns = nn.Sequential(*[self.kern1, self.kern2, self.kern3, self.kern4, self.kern5,
-                                    self.kern6, self.kern7, self.kern8])
-        self.parm = nn.Parameter(torch.from_numpy(np.array([1.])).float())
+        self.initBn = nn.BatchNorm2d(indim)
+        self.kern1 = StandardConv(1, 32, kernsize=5)
+        self.kern2 = StandardConv(32, 64, kernsize=3)
+        self.kern3 = StandardConv(64, 128, kernsize=3)
+        self.kern9 = StandardConv(128, 256, kernsize=3)
+        self.kern0 = StandardConv(256, 128, kernsize=3)
+        self.kern4 = StandardConv(128, 64, kernsize=3)
+        self.kern5 = StandardConv(64, 32, kernsize=3)
+        self.kern6 = StandardConv(32, 16, kernsize=3)
+        self.kern8 = StandardConv(16, 6, kernsize=3)
+        self.kerns = nn.Sequential(*[self.kern1, self.kern2, self.kern3, self.kern4,
+                                     self.kern5, self.kern6, self.kern8])
 
     def forward(self, x):
         x = F.avg_pool2d(x, 8)

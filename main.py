@@ -24,7 +24,7 @@ def visualizeResults(out, gt):
     :return:
     """
     visualization.VisualizeMapWithLandmarks(out.cpu().data.numpy(), gt.cpu().data.numpy(),
-                              env="TOCI_run")
+                              env="TOCI_run", N=45)
     pass
 
 def main(a):
@@ -79,7 +79,7 @@ def main(a):
                     s = Variable(samples[0]).cuda()
                     g = Variable(samples[1]).cuda()
                 else:
-                    s, g = samples[0], samples[1].transpose(1, 2)
+                    s, g = samples[0], samples[1]
                 out = net.forward(s.unsqueeze(1))
                 # out = net.forward(s.transpose(1, 2).float()).squeeze().
                 # print out
@@ -102,23 +102,14 @@ def main(a):
 
     # Evaluation mode
     else:
-        import SimpleITK as sitk
-
-        if not os.path.isdir(a.output):
-            try:
-                LogPrint("Cannot find output directory, creating...")
-                os.mkdir(a.output)
-            except:
-                LogPrint("Cannot create new directory")
-                return
-        assert os.path.isdir(a.output), "Ground truth directory cannot be opened!"
-        inputDataset= ImageDataSet(a.input, dtype=np.float32)
-        loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False, num_workers=4)
-        net = ResNet(inputDataset[0].size()[0], inputDataset[0].size()[0], 11)
+        import pandas as pd
+        inputDataset= ImageDataSet2D(a.input, dtype=np.float32, verbose=True)
+        loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
+        net = ConvNet(inputDataset[0].size()[1])
         if os.path.isfile(a.checkpoint):
             LogPrint("Loading parameters " + a.checkpoint)
             net.load_state_dict(torch.load(a.checkpoint))
-            net.training = False
+            # net.training = False
         else:
             LogPrint("Parameters file cannot be opened!")
             return
@@ -132,17 +123,22 @@ def main(a):
             s = Variable(samples)
             if a.usecuda:
                 s = s.cuda()
-            out = net.forward(s)
+            out = net.forward(s.unsqueeze(1)).squeeze()
             for j in xrange(out.data.size()[0]):
-                results.append(out[i].data.cpu().numpy())
+                results.append(out[j].data.cpu().numpy())
 
-        for i, r in enumerate(results):
-            im = sitk.GetImageFromArray(r)
-            metadata = inputDataset.metadata[i]
-            im = ImageDataSet.WrapImageWithMetaData(im, metadata)
-            outfname = a.output + "/" + os.path.basename(inputDataset.dataSourcePath[i])
-            LogPrint("Writing to " + outfname)
-            sitk.WriteImage(im, outfname)
+            if a.plot:
+                visualizeResults(s, out)
+
+        outdict = {'File': [], 'Proximal Phalanx': [], 'Meta Carpal': [], 'Distal Phalanx': []}
+        for i, res in enumerate(results):
+            outdict['File'].append(os.path.basename(inputDataset.dataSourcePath[i]))
+            outdict['Proximal Phalanx'].append(np.array(res[0], dtype=int).tolist())
+            outdict['Meta Carpal'].append(np.array(res[1], dtype=int).tolist())
+            outdict['Distal Phalanx'].append(np.array(res[2], dtype=int).tolist())
+        data = pd.DataFrame.from_dict(outdict)
+        data = data[['File', 'Proximal Phalanx', 'Meta Carpal', 'Distal Phalanx']]
+        data.to_csv(a.output)
 
     pass
 
