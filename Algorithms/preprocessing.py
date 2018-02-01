@@ -315,7 +315,7 @@ def DataAugmentatation(root_dir, outputdir, landmarks_csv):
     f.to_csv(outputdir + "/Landmarks.csv", index=False)
 
 
-def CropThumb(im, features):
+def CropThumb(im, features, patchsize):
     """
     Description
     -----------
@@ -329,13 +329,54 @@ def CropThumb(im, features):
         r, g, b = [features[0], features[2], features[3]]
     else:
         r, g, b = features
+    r, g, b = [np.array(x) for x in [r, g, b]]
 
-    cent = np.array([r, g, b]).mean()
+    # cent = np.array([r + g + b]) /3.
+    # cent = np.array(cent, dtype=int)
+    vect = b - g
+    vect = vect / np.linalg.norm(np.array(vect, dtype=float))
+    deg  = np.arccos(-vect[0])
+    deg = np.rad2deg(deg)
+    print deg
 
-    pass
+    halfsize = np.array(im.shape[:2]) / 2
+    bounds = (halfsize[1] - patchsize/2, halfsize[0] - patchsize/2, halfsize[1] - patchsize/2, halfsize[0] - patchsize/2) # top, right, bottom, left
+    # seg = [iaa.Sequential([iaa.Affine(translate_px={'x':  - c[1] + halfsize[0], 'y': - c[0] + halfsize[1]}),
+    #
+    seg = [iaa.Sequential([iaa.Affine(translate_px={'x':  - c[1] + halfsize[0], 'y': - c[0] + halfsize[1]}),
+                           iaa.Affine(rotate=-deg),
+                           iaa.Crop(px=bounds, keep_size=False)]) for c in [r, b]]
+    images = [S.augment_image(im) for S in seg]
+    return images
 
+def ExtractROIs(root_dir, landmark_csv, outdir):
+    """
 
+    :param root_dir:
+    :param landmark_csv:
+    :param outdir:
+    :return:
+    """
+    assert os.path.isdir(root_dir)
+    assert os.path.isfile(landmark_csv)
 
+    if not os.path.isdir(outdir):
+        os.mkdir(outdir)
+
+    features = ReadFeatures(landmark_csv)
+    images = ImageDataSet2D(root_dir,dtype=np.uint8, verbose=True, as_grey=False)
+    paths = images.dataSourcePath
+    images = images.tonumpy()
+
+    assert len(images) == features.shape[0]
+    for i, row in enumerate(zip(images, features)):
+        ims = CropThumb(row[0][:,:,0], row[1], 64)
+        ext = os.path.basename(paths[i]).split('.')[-1]
+        outnames = paths[i].replace(root_dir, outdir).replace('.' + ext, '_ROIs.' + ext)
+        outim = np.zeros(shape=[64, 64, 3])
+        outim[:,:,0] = ims[0]
+        outim[:,:,1] = ims[1]
+        imsave(outnames, outim)
 
 
 if __name__ == '__main__':
@@ -345,6 +386,7 @@ if __name__ == '__main__':
     # ResizeToSquare([512, 512], "./TOCI/10.TestData","./TOCI/10.TestData/Resized_SAR")
     # ResizeToSquare([512, 512], "./TOCI/02.ALL","./TOCI/05.Resized_SAR", landmarks_csv="./TOCI/03.Annotated/Landmarks.csv")
     # PlotImageWithLandmarks("./TOCI/05.Resized_SAR")
-    DataAugmentatation("./TOCI/05.Resized_SAR", "./TOCI/05.Resized_SAR/aug", "./TOCI/05.Resized_SAR/Landmarks.csv")
+    # DataAugmentatation("./TOCI/05.Resized_SAR", "./TOCI/05.Resized_SAR/aug", "./TOCI/05.Resized_SAR/Landmarks.csv")
     # ReadFeatures("./TOCI/03.Annotated/Landmarks.csv")
+    ExtractROIs("./TOCI/05.Resized_SAR", "./TOCI/05.Resized_SAR/Landmarks.csv", "./TOCI/05.Resized_SAR/ROIs")
     pass
