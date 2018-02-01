@@ -151,7 +151,7 @@ def PadToSquare(img, s=None):
 
         pilim = Image.fromarray(img)
         pilim.thumbnail(tuple(s))
-        background = Image.new('RGBA', tuple(s), (0, 0, 0, 1))
+        background = Image.new('RGB', tuple(s), (0, 0, 0))
         background.paste(
             pilim, (int((s[0] - pilim.size[0]) / 2), int((s[1] - pilim.size[1]) / 2))
         )
@@ -179,7 +179,6 @@ def ResizeToSquare(size, root_dir, outputdir, landmarks_csv=None):
         d = pd.read_csv(landmarks_csv)
         for i, row in d.iterrows():
             im = imread(root_dir + "/" + row['File'].replace("png", 'jpg'), as_grey=False)
-            print im.shape
 
             newim = PadToSquare(im, size)
 
@@ -251,13 +250,43 @@ def ReadFeatures(landmarks_csv):
     return out
 
 
+def SaveFeatures(imfname, features, columnName=('Proximal Phalanx', 'Sesamoid', 'Metacarpal', 'Distal Phalanx')):
+    """SaveFeatures -> dict
+    Description
+    -----------
+      Save the features according to the input tensor. Assume the tensor is a NxMx2 array where
+      N is should equal the number of images and M equal number or features per
+
+    :param iter         imfname:    Filename list that corresponds to the images with features
+    :param np.ndarray   features:   Tensor of NxMxN dimensions
+    :param iter         columnName: Name of the output dictionary columns
+    :return: dict
+    """
+    assert len(imfname) == features.shape[0]
+    assert len(columnName) == features.shape[1]
+    outdict = {}
+    for keys in ['File']+list(columnName):
+        outdict[keys] = []
+
+    for i in xrange(len(imfname)):
+        outdict['File'].append(imfname[i])
+        for j, keys in enumerate(list(columnName)):
+            outdict[keys].append(features[i, j].tolist())
+    return outdict
+
+
 def DataAugmentatation(root_dir, outputdir, landmarks_csv):
+    import pandas as pd
     from visualization import VisualizeMapWithLandmarks
     assert os.path.isdir(root_dir)
-    assert os.path.isdir(outputdir)
+    if not os.path.isdir(outputdir):
+        os.mkdir(outputdir)
+
     seg = iaa.Sequential([iaa.Fliplr(0.7), iaa.Affine(rotate=(-70, 70), order=[0, 1])])
 
-    data = ImageDataSet2D(root_dir, dtype=np.uint8, verbose=True).tonumpy()
+    data = ImageDataSet2D(root_dir, dtype=np.float32, verbose=True, as_grey=True)
+    paths = data.dataSourcePath
+    data = data.tonumpy()
 
     keypoints = []
     features = ReadFeatures(landmarks_csv)
@@ -268,7 +297,7 @@ def DataAugmentatation(root_dir, outputdir, landmarks_csv):
             pts.append(ia.Keypoint(x=x, y=y))
         keypoints.append(ia.KeypointsOnImage(pts, shape=tuple(data[i].shape)))
 
-    VisualizeMapWithLandmarks(data, features, env="Test", N=100, win="before")
+    # VisualizeMapWithLandmarks(data, features, env="Test", N=100, win="before")
     seg_det = seg.to_deterministic()
 
     images_aug = seg_det.augment_images(data)
@@ -276,8 +305,36 @@ def DataAugmentatation(root_dir, outputdir, landmarks_csv):
     images_aug = np.concatenate([np.expand_dims(I, 0) for I in images_aug], 0)
     keypoints_aug = np.stack([[[p.y, p.x] for p in keypoints_aug[i].keypoints] for i in xrange(len(keypoints_aug))])
 
-    VisualizeMapWithLandmarks(images_aug, keypoints_aug, env="Test", N=100, win="after")
-    # for i in enumerate(zip(images_aug, keypoints_aug)):
+    # VisualizeMapWithLandmarks(images_aug, keypoints_aug, env="Test", N=100, win="after")
+    outfnames = [os.path.basename(d.replace(".jpg", ".png").replace(".png", "_AUG.png")) for d in paths]
+    for i, im in enumerate(images_aug):
+        im = np.tile(np.array(im*255, dtype=np.uint8)[:,:,None], (1, 1, 3))
+        imsave(outputdir + "/" + outfnames[i], im)
+    f = pd.DataFrame.from_dict(SaveFeatures(outfnames, keypoints_aug))
+    f = f[['File', 'Proximal Phalanx', 'Sesamoid', 'Metacarpal', 'Distal Phalanx']]
+    f.to_csv(outputdir + "/Landmarks.csv", index=False)
+
+
+def CropThumb(im, features):
+    """
+    Description
+    -----------
+      Crop thumb from image. Ignore second row if features is 4x2 array
+
+    :param np.ndarray im:
+    :param np.ndarray features: 4x2 array or 3x2 array
+    :return:
+    """
+    if features.shape[0] == 4:
+        r, g, b = [features[0], features[2], features[3]]
+    else:
+        r, g, b = features
+
+    cent = np.array([r, g, b]).mean()
+
+    pass
+
+
 
 
 
@@ -285,8 +342,9 @@ if __name__ == '__main__':
     # PlotImageWithLandmarks("./TOCI/04.Resized")
     # ExtractLandmarks("./TOCI/02.ALL")
     # ResizeImagesWithLandmarks([512,512], "./TOCI/02.ALL", "./TOCI/03.Annotated/Landmarks.csv", "./TOCI/04.Resized/")
-    ResizeToSquare([512, 512], "./TOCI/10.TestData","./TOCI/10.TestData/Resized_SAR")
+    # ResizeToSquare([512, 512], "./TOCI/10.TestData","./TOCI/10.TestData/Resized_SAR")
+    # ResizeToSquare([512, 512], "./TOCI/02.ALL","./TOCI/05.Resized_SAR", landmarks_csv="./TOCI/03.Annotated/Landmarks.csv")
     # PlotImageWithLandmarks("./TOCI/05.Resized_SAR")
-    # DataAugmentatation("./TOCI/05.Resized_SAR", "./TOCI/05.Resized_SAR/aug", "./TOCI/05.Resized_SAR/Landmarks.csv")
+    DataAugmentatation("./TOCI/05.Resized_SAR", "./TOCI/05.Resized_SAR/aug", "./TOCI/05.Resized_SAR/Landmarks.csv")
     # ReadFeatures("./TOCI/03.Annotated/Landmarks.csv")
     pass

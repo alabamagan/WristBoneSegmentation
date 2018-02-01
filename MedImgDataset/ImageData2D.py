@@ -3,10 +3,10 @@ from torch import from_numpy, cat
 import fnmatch
 import os
 import numpy as np
-from scipy.ndimage import imread
+from skimage.io import imread
 
 class ImageDataSet2D(Dataset):
-    def __init__(self, rootdir, readmode='L', verbose=False, dtype=float):
+    def __init__(self, rootdir, as_grey=True, verbose=False, dtype=float):
         """ImageDataSet2D
         Description
         -----------
@@ -25,7 +25,7 @@ class ImageDataSet2D(Dataset):
         self.length = 0
         self.verbose = verbose
         self.dtype = dtype
-        self.readmode=readmode
+        self.as_grey=as_grey
         self._ParseRootDir()
 
     def _ParseRootDir(self):
@@ -45,7 +45,7 @@ class ImageDataSet2D(Dataset):
         for f in self.dataSourcePath:
             if self.verbose:
                 print "Reading from ", f
-            self.data.append(from_numpy(np.array(imread(f, mode=self.readmode), dtype=self.dtype)))
+            self.data.append(from_numpy(np.array(imread(f, as_grey=self.as_grey), dtype=self.dtype)))
 
         self.length = len(self.data)
 

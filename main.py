@@ -4,7 +4,7 @@ import logging
 import numpy as np
 
 from MedImgDataset import ImageDataSet2D, ImageFeaturePair, Landmarks
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, sampler
 from torch.autograd import Variable
 from Networks import ConvNet
 import torch.nn as nn
@@ -23,7 +23,7 @@ def visualizeResults(out, gt):
     :param Varialbe gt:
     :return:
     """
-    visualization.VisualizeMapWithLandmarks(out.cpu().data.numpy(), gt.cpu().data.numpy(),
+    visualization.VisualizeMapWithLandmarks(out.cpu().data.numpy() * 255, gt.cpu().data.numpy(),
                               env="TOCI_run", N=45)
     pass
 
@@ -43,7 +43,8 @@ def main(a):
         inputDataset= ImageDataSet2D(a.input, dtype=np.float32, verbose=True)
         gtDataset   = Landmarks(a.train)
         trainingSet = ImageFeaturePair(inputDataset, gtDataset)
-        loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True, num_workers=4)
+        loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True, num_workers=4,
+                                 sampler=sampler.WeightedRandomSampler(np.ones(len(trainingSet)).tolist(), a.batchsize*100))
 
         # print inputDataset
         # return
@@ -51,6 +52,7 @@ def main(a):
         # Load Checkpoint or create new network
         #-----------------------------------------
         net = ConvNet(inputDataset[0].size()[1])
+        net.train(True)
         if os.path.isfile(a.checkpoint):
             LogPrint("Loading checkpoint " + a.checkpoint)
             net.load_state_dict(torch.load(a.checkpoint))
@@ -63,7 +65,7 @@ def main(a):
         lr = trainparams['lr'] if trainparams.has_key('lr') else 1e-5
         mm = trainparams['momentum'] if trainparams.has_key('momentum') else 0.01
 
-        criterion = nn.MSELoss()
+        criterion = nn.SmoothL1Loss()
         optimizer = optim.SGD([{'params': net.parameters(),
                                 'lr': lr, 'momentum': mm}])
         if a.usecuda:
@@ -71,6 +73,7 @@ def main(a):
             net = net.cuda()
             # optimizer.cuda()
 
+        lastloss = 1e32
         losses = []
         for i in xrange(a.epoch):
             E = []
@@ -91,7 +94,9 @@ def main(a):
                 if a.plot:
                     visualizeResults(s, out)
             losses.append(E)
-            torch.save(net.state_dict(), "./Backup/checkpoint_ConvNet.pt")
+            if np.array(E).mean() < lastloss:
+                torch.save(net.state_dict(), "./Backup/checkpoint_ConvNet.pt")
+                lastloss = np.array(E).mean()
             print "[Epoch %04d] Loss: %.010f"%(i, np.array(E).mean())
 
              # Decay learning rate
@@ -109,7 +114,7 @@ def main(a):
         if os.path.isfile(a.checkpoint):
             LogPrint("Loading parameters " + a.checkpoint)
             net.load_state_dict(torch.load(a.checkpoint))
-            # net.training = False
+            net.train(False)
         else:
             LogPrint("Parameters file cannot be opened!")
             return

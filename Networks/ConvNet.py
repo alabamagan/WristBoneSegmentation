@@ -44,11 +44,12 @@ class StandardConv(nn.Module):
 #         x = x.view(-1, 4, 2)
 #         return x
 
+
 class ConvNet(nn.Module):
     def __init__(self, indim):
         super(ConvNet,self).__init__()
         self.indim = indim
-        self.initBn = nn.BatchNorm2d(indim)
+        self.initBn = nn.BatchNorm2d(1)
         self.kern1 = StandardConv(1, 32, kernsize=5)
         self.kern2 = StandardConv(32, 64, kernsize=3)
         self.kern3 = StandardConv(64, 128, kernsize=3)
@@ -63,8 +64,9 @@ class ConvNet(nn.Module):
 
     def forward(self, x):
         x = F.avg_pool2d(x, 8)
+        x = self.initBn(x)
         x = self.kerns(x)
-        x = F.avg_pool2d(x, x.data.size()[2])
+        x = F.avg_pool2d(x, x.data.size()[2]) # B, C, H, W
         x = x.view(-1, 3, 2).contiguous()
         x = x * self.indim
         return x
