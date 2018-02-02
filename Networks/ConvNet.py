@@ -50,23 +50,24 @@ class ConvNet(nn.Module):
         super(ConvNet,self).__init__()
         self.indim = indim
         self.initBn = nn.BatchNorm2d(1)
-        self.kern1 = StandardConv(1, 32, kernsize=5)
-        self.kern2 = StandardConv(32, 64, kernsize=3)
-        self.kern3 = StandardConv(64, 128, kernsize=3)
-        self.kern9 = StandardConv(128, 256, kernsize=3)
-        self.kern0 = StandardConv(256, 128, kernsize=3)
-        self.kern4 = StandardConv(128, 64, kernsize=3)
-        self.kern5 = StandardConv(64, 32, kernsize=3)
-        self.kern6 = StandardConv(32, 16, kernsize=3)
-        self.kern8 = StandardConv(16, 6, kernsize=3)
-        self.kerns = nn.Sequential(*[self.kern1, self.kern2, self.kern3, self.kern4,
-                                     self.kern5, self.kern6, self.kern8])
+        self.kern1 = StandardConv(1, 32, kernsize=5, padding=True)
+        self.kern2 = StandardConv(32, 64, kernsize=3, padding=True)
+        self.kern3 = StandardConv(64, 128, kernsize=3, padding=True)
+        self.kern4 = StandardConv(128, 256, kernsize=3, padding=True)
+        self.kern5 = StandardConv(256, 512, kernsize=2, padding=True)
+        self.fc1 = nn.Linear(512, 1024)
+        self.fc2 = nn.Linear(1024, 6)
 
     def forward(self, x):
         x = F.avg_pool2d(x, 8)
         x = self.initBn(x)
-        x = self.kerns(x)
-        x = F.avg_pool2d(x, x.data.size()[2]) # B, C, H, W
-        x = x.view(-1, 3, 2).contiguous()
-        x = x * self.indim
+        x = F.max_pool2d(self.kern1(x), 2)
+        x = F.max_pool2d(self.kern2(x), 2)
+        x = F.max_pool2d(self.kern3(x), 2)
+        x = F.max_pool2d(self.kern4(x), 2)
+        x = F.max_pool2d(self.kern5(x), 2)
+        x = self.fc2(self.fc1(x.squeeze()))
+        # x = F.avg_pool2d(x, x.data.size()[2]) # B, C, H, W
+        x = x.view(-1, 3, 2)
+        # x = x
         return x
