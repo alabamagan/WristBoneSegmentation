@@ -1,4 +1,3 @@
-import SimpleITK as sitk
 import numpy as np
 import os
 from MedImgDataset import ImageDataSet2D
@@ -7,6 +6,7 @@ import matplotlib.pyplot as plt
 import imgaug as ia
 from imgaug import augmenters as iaa
 from PIL import Image, ImageOps
+import SimpleITK as sitk
 
 sitk.ProcessObject_GlobalWarningDisplayOff()
 
@@ -38,15 +38,17 @@ def RecursiveListDir(searchDepth, rootdir):
 
 def ExtractLandmarks(rootdir):
     from pandas import DataFrame as df
-    im = ImageDataSet2D(rootdir, readmode='RGB', dtype=np.uint8, verbose=True)
+    from scipy.ndimage import imread as imreadsp
+    readfunc = lambda x: imreadsp(x, mode='RGB')
+    im = ImageDataSet2D(rootdir, as_grey=False, dtype=np.uint8, verbose=True, readfunc=readfunc)
     out = {'File': [], 'Proximal Phalanx': [], 'Sesamoid': [], 'Metacarpal': [], 'Distal Phalanx': []}
     for i, sample in enumerate(im):
         try:
             temp = sample.numpy()
-            coordblue = np.where(np.all(temp == (0, 0, 255), axis=-1))
-            coordred = np.where(np.all(temp == (255, 0, 0), axis=-1))
-            coordyellow = np.where(np.all(temp == (255, 255, 0), axis=-1))
-            coordgreen = np.where(np.all(temp == (0, 255, 0), axis=-1))
+            coordblue = np.where(np.all(temp == [0, 0, 255], axis=-1))
+            coordred = np.where(np.all(temp == [255, 0, 0], axis=-1))
+            coordyellow = np.where(np.all(temp == [255, 255, 0], axis=-1))
+            coordgreen = np.where(np.all(temp == [0, 255, 0], axis=-1))
             coordblue, coordred, coordyellow, coordgreen \
                 = [zip(z[0], z[1]) for z in [coordblue, coordred, coordyellow, coordgreen]]
             coordblue, coordred, coordyellow, coordgreen \
@@ -65,10 +67,10 @@ def ExtractLandmarks(rootdir):
     print data.to_string()
 
 
-def PlotImageWithLandmarks(rootdir):
+def PlotImageWithLandmarks(rootdir, landmarks_csv):
     import pandas as pd
 
-    landmarkds = pd.read_csv(rootdir + "/Landmarks.csv")
+    landmarkds = pd.read_csv(landmarks_csv)
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
     for i, row in landmarkds.iterrows():
@@ -208,12 +210,12 @@ def ResizeToSquare(size, root_dir, outputdir, landmarks_csv=None):
             outdict['Metacarpal'].append(b)
             outdict['Distal Phalanx'].append(y)
             imsave(outputdir + "/" + row['File'].replace('.jpg', '.png'), newim )
+            print outputdir + "/" + row['File'].replace('.jpg', '.png')
 
 
         data = pd.DataFrame.from_dict(outdict)
         data = data[['File', 'Proximal Phalanx', 'Sesamoid', 'Metacarpal', 'Distal Phalanx']]
         data.to_csv(outputdir + "/Landmarks.csv", index=False)
-        PlotImageWithLandmarks("./TOCI/05.Resized_SAR")
     else:
         images = ImageDataSet2D(root_dir, dtype=np.uint8, verbose=True, as_gray=False)
         imdirs = images.dataSourcePath
@@ -238,10 +240,16 @@ def ReadFeatures(landmarks_csv):
     out = []
     d = pd.read_csv(landmarks_csv)
     for i, row in d.iterrows():
-        r, g, b, y = [eval(row[keys]) for keys in ['Proximal Phalanx',
-                                                   'Sesamoid',
-                                                   'Metacarpal',
-                                                   'Distal Phalanx']]
+        try:
+            r, g, b, y = [eval(row[keys]) for keys in ['Proximal Phalanx',
+                                                       'Sesamoid',
+                                                       'Metacarpal',
+                                                       'Distal Phalanx']]
+        except:
+            r, g, b, y = [eval(row[keys]) for keys in ['Proximal Phalanx',
+                                                       'Proximal Phalanx',
+                                                       'Metacarpal',
+                                                       'Distal Phalanx']]
         r, g, b, y = [np.expand_dims(T, 0) for T in [r, g, b, y]]
         t = np.concatenate([r, g, b, y], axis=0)
         t = np.expand_dims(t, 0)
@@ -315,7 +323,28 @@ def DataAugmentatation(root_dir, outputdir, landmarks_csv):
     f.to_csv(outputdir + "/Landmarks.csv", index=False)
 
 
-def CropThumb(im, features, patchsize):
+def ROIAugmentation(root_dir):
+    assert os.path.isdir(root_dir)
+
+    seg = iaa.Sequential([iaa.Fliplr(0.5),
+                          iaa.Affine(scale=(0.7,1.2), rotate=(-20, 20), translate_px=(-16,16)),
+                          iaa.Sharpen(lightness=(0.9, 1.1)),
+                          iaa.ContrastNormalization(alpha=(1., 1.2), per_channel=True)])
+
+    data = ImageDataSet2D(root_dir, dtype=np.uint8, as_grey=False, verbose=True)
+    paths = data.dataSourcePath
+    data = data.tonumpy()
+    print data.shape
+
+    for suff in ['-A', '-B', '-C']:
+        images_aug = seg.augment_images(data)
+        outfnames = [os.path.basename(d.replace(".jpg", ".png").replace(".png", "%s.png"%suff)) for d in paths]
+        for i, im in enumerate(images_aug):
+            imsave(root_dir + "/" + outfnames[i], im)
+
+
+
+def CropThumb(im, features, patchsize, imaug=False):
     """
     Description
     -----------
@@ -335,21 +364,25 @@ def CropThumb(im, features, patchsize):
     # cent = np.array(cent, dtype=int)
     vect = b - g
     vect = vect / np.linalg.norm(np.array(vect, dtype=float))
-    deg  = np.arccos(-vect[0])
+    deg = np.arctan2(0, -1) - np.arctan2(vect[1], vect[0])
     deg = np.rad2deg(deg)
-    print deg
 
     halfsize = np.array(im.shape[:2]) / 2
     bounds = (halfsize[1] - patchsize/2, halfsize[0] - patchsize/2, halfsize[1] - patchsize/2, halfsize[0] - patchsize/2) # top, right, bottom, left
-    # seg = [iaa.Sequential([iaa.Affine(translate_px={'x':  - c[1] + halfsize[0], 'y': - c[0] + halfsize[1]}),
-    #
-    seg = [iaa.Sequential([iaa.Affine(translate_px={'x':  - c[1] + halfsize[0], 'y': - c[0] + halfsize[1]}),
-                           iaa.Affine(rotate=-deg),
-                           iaa.Crop(px=bounds, keep_size=False)]) for c in [r, b]]
+
+    if imaug is False:
+        seg = [iaa.Sequential([iaa.Affine(translate_px={'x':  - c[1] + halfsize[0], 'y': - c[0] + halfsize[1]}),
+                               iaa.Affine(rotate=-deg),
+                               iaa.Crop(px=bounds, keep_size=False)]) for c in [r, b]]
+    else:
+        seg = [iaa.Sequential([iaa.Affine(translate_px={'x':  - c[1] + halfsize[0], 'y': - c[0] + halfsize[1]}),
+                               iaa.Affine(rotate=(-deg - 10, -deg + 10)),
+                               iaa.Affine(translate_px=(-16, 16), scale=(0.8,1.2)),
+                               iaa.Crop(px=bounds, keep_size=False)]) for c in [r, b]]
     images = [S.augment_image(im) for S in seg]
     return images
 
-def ExtractROIs(root_dir, landmark_csv, outdir):
+def ExtractROIs(root_dir, landmark_csv, outdir, patchsize, augment=0):
     """
 
     :param root_dir:
@@ -366,27 +399,48 @@ def ExtractROIs(root_dir, landmark_csv, outdir):
     features = ReadFeatures(landmark_csv)
     images = ImageDataSet2D(root_dir,dtype=np.uint8, verbose=True, as_grey=False)
     paths = images.dataSourcePath
-    images = images.tonumpy()
 
+    print len(images), features.shape
     assert len(images) == features.shape[0]
     for i, row in enumerate(zip(images, features)):
-        ims = CropThumb(row[0][:,:,0], row[1], 64)
-        ext = os.path.basename(paths[i]).split('.')[-1]
-        outnames = paths[i].replace(root_dir, outdir).replace('.' + ext, '_ROIs.' + ext)
-        outim = np.zeros(shape=[64, 64, 3])
-        outim[:,:,0] = ims[0]
-        outim[:,:,1] = ims[1]
-        imsave(outnames, outim)
+        if augment == 0:
+            ims = CropThumb(row[0].numpy()[:,:,0], row[1], patchsize)
+            ext = os.path.basename(paths[i]).split('.')[-1]
+            outnames = paths[i].replace(root_dir, outdir).replace('.' + ext, '_ROIs.' + ext)
+            outim = np.zeros(shape=[patchsize, patchsize, 3], dtype=np.uint8)
+            outim[:,:,0] = ims[0]
+            outim[:,:,1] = ims[1]
+            imsave(outnames, outim)
+        else:
+            for j in xrange(augment):
+                ims = CropThumb(row[0].numpy()[:,:,0], row[1], patchsize, True)
+                ext = os.path.basename(paths[i]).split('.')[-1]
+                outnames = paths[i].replace(root_dir, outdir).replace('.' + ext, '_ROIs_AUG%02d.'%j + ext)
+                outim = np.zeros(shape=[patchsize, patchsize, 3], dtype=np.uint8)
+                outim[:,:,0] = ims[0]
+                outim[:,:,1] = ims[1]
+                imsave(outnames, outim)
 
 
 if __name__ == '__main__':
     # PlotImageWithLandmarks("./TOCI/04.Resized")
-    # ExtractLandmarks("./TOCI/02.ALL")
-    # ResizeImagesWithLandmarks([512,512], "./TOCI/02.ALL", "./TOCI/03.Annotated/Landmarks.csv", "./TOCI/04.Resized/")
-    # ResizeToSquare([512, 512], "./TOCI/10.TestData","./TOCI/10.TestData/Resized_SAR")
+    # ExtractLandmarks("./TOCI/99.MISC/Annotate2/Results")
+    # ResizeToSquare([512, 512], "./TOCI/10.TestData","./TOCI/10.TestData/Resized_SAR", landmarks_csv="./TOCI/11.AnnotatedTestData/Landmarks.csv")
     # ResizeToSquare([512, 512], "./TOCI/02.ALL","./TOCI/05.Resized_SAR", landmarks_csv="./TOCI/03.Annotated/Landmarks.csv")
     # PlotImageWithLandmarks("./TOCI/05.Resized_SAR")
     # DataAugmentatation("./TOCI/05.Resized_SAR", "./TOCI/05.Resized_SAR/aug", "./TOCI/05.Resized_SAR/Landmarks.csv")
     # ReadFeatures("./TOCI/03.Annotated/Landmarks.csv")
-    ExtractROIs("./TOCI/05.Resized_SAR", "./TOCI/05.Resized_SAR/Landmarks.csv", "./TOCI/05.Resized_SAR/ROIs")
+    # ExtractROIs("./TOCI/10.TestData/Resized_SAR", "./TOCI/10.TestData/Resized_SAR/Landmarks.csv", "./TOCI/10.TestData/Resized_SAR/ROIs_GT", 64, 3)
+    ExtractROIs("./TOCI/05.Resized_SAR", "./TOCI/05.Resized_SAR/Landmarks.csv", "./TOCI/05.Resized_SAR/ROIs_Aug", 64, 3)
+    # ROIAugmentation("./TOCI/05.Resized_SAR/ROIs/5")
+    # ROIAugmentation("./TOCI/05.Resized_SAR/ROIs/6")
+    # ROIAugmentation("./TOCI/05.Resized_SAR/ROIs/7")
+    # ROIAugmentation("./TOCI/05.Resized_SAR/ROIs/8")
+
+    # import visdom
+    # vis = visdom.Visdom(port=80)
+    # im = imread("./TOCI/05.Resized_SAR/TOCI4_0004.png", as_grey=False)
+    # features = np.array([[272, 183],[277, 198],[333, 216],[227, 157]])
+    # ims = CropThumb(im, features, 64)
+    # vis.images(np.array(ims).transpose(0, 3, 1, 2), win="Images")
     pass

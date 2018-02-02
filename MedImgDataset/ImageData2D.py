@@ -6,7 +6,7 @@ import numpy as np
 from skimage.io import imread
 
 class ImageDataSet2D(Dataset):
-    def __init__(self, rootdir, as_grey=True, verbose=False, dtype=float):
+    def __init__(self, rootdir, as_grey=True, verbose=False, dtype=float, readfunc=None):
         """ImageDataSet2D
         Description
         -----------
@@ -15,6 +15,7 @@ class ImageDataSet2D(Dataset):
         :param str rootdir:  Specify which directory to look into
         :param str readmode: This argument is passed to skimage.io.imread
         :param bool verbose: Set to True if you want verbose info
+        :param callable readfunc: If this is set, it will be used to load image files, as_grey option will be ignored
         :param type dtype:   The type to cast the tensors
         """
         super(ImageDataSet2D, self).__init__()
@@ -26,6 +27,7 @@ class ImageDataSet2D(Dataset):
         self.verbose = verbose
         self.dtype = dtype
         self.as_grey=as_grey
+        self.readfunc = readfunc
         self._ParseRootDir()
 
     def _ParseRootDir(self):
@@ -45,7 +47,13 @@ class ImageDataSet2D(Dataset):
         for f in self.dataSourcePath:
             if self.verbose:
                 print "Reading from ", f
-            self.data.append(from_numpy(np.array(imread(f, as_grey=self.as_grey), dtype=self.dtype)))
+            if self.readfunc is None:
+                im = imread(f, as_grey=self.as_grey)
+            else:
+                im = self.readfunc(f)
+            im = from_numpy(np.array(im*255, dtype=self.dtype)) if self.as_grey and self.dtype == np.uint8 else \
+                from_numpy(np.array(im, dtype=self.dtype))
+            self.data.append(im)
 
         self.length = len(self.data)
 
