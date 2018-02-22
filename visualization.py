@@ -1,7 +1,5 @@
 import visdom
 import numpy as np
-import torchvision
-import torch.nn as nn
 from torch.tensor import _TensorBase
 
 vis = visdom.Visdom(port=80)
@@ -93,9 +91,40 @@ def Visualize2D(*args, **kwargs):
         vis.images(np.expand_dims(temp, 1)[newRange[0]:newRange[1]],
                    nrow=nrow, env=env, win=prefix+"%i"%i)
 
-# Testing
-from dataset import ImageDataSet
 
-d1 = ImageDataSet("./SBL_2D_3D/14.BrainMask_Resampled")
-d2 = ImageDataSet("./SBL_2D_3D/13.3D_Resampled")
-Visualize2D(d2[5], d1[5], axis=1, env="Test", indexrange=[105, 125])
+def VisualizeMapWithLandmarks(images, landmarks, env="TOCI", N=20, win="Image"):
+    """
+    Description
+    -----------
+      Visualize images landmarkds
+    :param np.ndarray images:
+    :param np.ndarray landmarks:
+    :return:
+    """
+    from skimage.draw import circle, line
+
+    color = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]]
+
+    if images.ndim == 3:
+        assert images.shape[0] == landmarks.shape[0]
+        landmarks = np.array(landmarks, dtype=np.uint32)
+        images = np.tile(images[:,None,:,:], [1, 3, 1, 1])
+        for i in xrange(0, np.min([N, images.shape[0]])):
+            for j in xrange(landmarks.shape[1]):
+                # rr, cc = line(landmarks[i,j,0], landmarks[i,j,1], landmarks[i,j-1,0], landmarks[i,j-1,1])
+                rr, cc = circle(landmarks[i,j,0], landmarks[i,j,1], 5, shape=images.shape[2:])
+                images[i, :, rr, cc] = color[j]
+        vis.images(images[:np.min([N, images.shape[0]])], nrow=5, env=env, win=win)
+    else:
+        for i in xrange(landmarks.shape[0]):
+            rr, cc = circle(landmarks[i,0], landmarks[i,1], 3, shape=images.shape)
+            images[rr, cc] = 255
+        vis.image(images, env=env, win=win)
+
+
+# # Testing
+# from MedImgDataset.ImageData import ImageDataSet
+#
+# d1 = ImageDataSet("./SBL_2D_3D/14.BrainMask_Resampled")
+# d2 = ImageDataSet("./SBL_2D_3D/13.3D_Resampled")
+# Visualize2D(d2[5], d1[5], axis=1, env="Test", indexrange=[105, 125])
