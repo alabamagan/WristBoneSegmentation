@@ -1,7 +1,5 @@
 import SimpleITK as sitk
-import numpy as np
 import os
-import ntpath, fnmatch
 sitk.ProcessObject_GlobalWarningDisplayOff()
 
 
@@ -28,4 +26,5 @@ def RecursiveListDir(searchDepth, rootdir):
 
     DD.extend(nextlayer)
     return DD
+
 

@@ -121,10 +121,3 @@ def VisualizeMapWithLandmarks(images, landmarks, env="TOCI", N=20, win="Image"):
             images[rr, cc] = 255
         vis.image(images, env=env, win=win)
 
-
-# # Testing
-# from MedImgDataset.ImageData import ImageDataSet
-#
-# d1 = ImageDataSet("./SBL_2D_3D/14.BrainMask_Resampled")
-# d2 = ImageDataSet("./SBL_2D_3D/13.3D_Resampled")
-# Visualize2D(d2[5], d1[5], axis=1, env="Test", indexrange=[105, 125])

@@ -3,15 +3,17 @@ import os
 import logging
 import numpy as np
 
-from dataset import ImageDataSet, MaskedTensorDataset
-from torch.utils.data import DataLoader, TensorDataset
+from MedImgDataset import ImageDataSet2D, ImageFeaturePair, Landmarks
+from torch.utils.data import DataLoader, TensorDataset, sampler
 from torch.autograd import Variable
-from Networks import ALTNet, ConvNet
+from torchvision.datasets import ImageFolder
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 import torch
 import visualization
+from skimage.io import imread
+
+# import your own newtork
 
 def LogPrint(msg, level=20):
     logging.getLogger(__name__).log(level, msg)
@@ -24,8 +26,8 @@ def visualizeResults(out, gt):
     :param Varialbe gt:
     :return:
     """
-    visualization.Visualize2D(out.cpu().data[0], gt.cpu().data[0],
-                              env="ImageUpsampling_Conv", indexrange=[20, 50])
+    visualization.VisualizeMapWithLandmarks(out.cpu().data.numpy() * 255, gt.cpu().data.numpy(),
+                              env="TOCI_run", N=45)
     pass
 
 def main(a):
@@ -40,16 +42,20 @@ def main(a):
     ##############################
     # Training Mode
     if not mode:
-        assert os.path.isdir(a.train), "Ground truth directory cannot be opened!"
-        inputDataset= ImageDataSet(a.input, dtype=np.float32)
-        gtDataset   = ImageDataSet(a.train, dtype=np.float32)
-        trainingSet = TensorDataset(inputDataset, gtDataset)
-        loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True)
+        assert os.path.isfile(a.train), "Ground truth directory cannot be opened!"
+        inputDataset= ImageDataSet2D(a.input, dtype=np.float32, verbose=True)
+        gtDataset   = Landmarks(a.train)
+        trainingSet = ImageFeaturePair(inputDataset, gtDataset)
+        loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True, num_workers=4)
+                                 # sampler=sampler.WeightedRandomSampler(np.ones(len(trainingSet)).tolist(), a.batchsize*100))
+
 
         # Load Checkpoint or create new network
         #-----------------------------------------
-        net = ConvNet()
+        net = ConvNet(inputDataset[0].size()[1]) if a.stage == 1 else WNet(5)
+        net.train(True)
         if os.path.isfile(a.checkpoint):
+            assert os.path.isfile(a.checkpoint)
             LogPrint("Loading checkpoint " + a.checkpoint)
             net.load_state_dict(torch.load(a.checkpoint))
 
@@ -61,14 +67,16 @@ def main(a):
         lr = trainparams['lr'] if trainparams.has_key('lr') else 1e-5
         mm = trainparams['momentum'] if trainparams.has_key('momentum') else 0.01
 
-        criterion = nn.MSELoss()
+
+        criterion = nn.SmoothL1Loss()
         optimizer = optim.SGD([{'params': net.parameters(),
                                 'lr': lr, 'momentum': mm}])
         if a.usecuda:
-            criterion.cuda()
-            net.cuda()
+            criterion = criterion.cuda()
+            net = net.cuda()
             # optimizer.cuda()
 
+        lastloss = 1e32
         losses = []
         for i in xrange(a.epoch):
             E = []
@@ -77,27 +85,85 @@ def main(a):
                     s = Variable(samples[0]).cuda()
                     g = Variable(samples[1]).cuda()
                 else:
-                    s, g = samples
+                    s, g = samples[0], samples[1]
 
-                out = net.forward(s.unsqueeze(1)).squeeze()
-                loss = criterion(out, g)
+                out = net.forward(s.unsqueeze(1))
+                loss = criterion(out,g.float())
+
+
                 loss.backward()
                 optimizer.step()
                 E.append(loss.data[0])
                 print "\t[Step %04d] Loss: %.010f"%(index, loss.data[0])
                 if a.plot:
-                    visualizeResults(out, g)
+                    visualizeResults(s, out)
+
             losses.append(E)
-            torch.save(net.state_dict(), "./Backup/checkpoint_CONV.pt")
+            if np.array(E).mean() <= lastloss:
+                backuppath = "./Backup/checkpoint_ConvNet.pt" if a.stage == 1 else "./Backup/checkpoint_WNet.pt"
+                torch.save(net.state_dict(), backuppath)
+                lastloss = np.array(E).mean()
             print "[Epoch %04d] Loss: %.010f"%(i, np.array(E).mean())
 
              # Decay learning rate
             if a.decay != 0:
                 for pg in optimizer.param_groups:
-                    pg['lr'] = pg['lr'] * np.exp(-i * float(a.epoch)  * a.decay / float(a.epoch))
+                    pg['lr'] = pg['lr'] * np.exp(-i * a.decay / float(a.epoch))
 
 
+    # Evaluation mode
+    else:
+        import pandas as pd
+        if a.stage == 1:
+            inputDataset= ImageDataSet2D(a.input, dtype=np.float32, verbose=True)
+            loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
+            net = ConvNet(inputDataset[0].size()[1])
+        else:
+            imreader = lambda x: imread(x, as_grey=False)
+            inputDataset = ImageDataSet2D(a.input, dtype=np.uint8, verbose=True, as_grey=False, readfunc=imreader)
+            loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
+            net = WNet(5)
 
+        if os.path.isfile(a.checkpoint):
+            LogPrint("Loading parameters " + a.checkpoint)
+            net.load_state_dict(torch.load(a.checkpoint))
+            net.train(False)
+        else:
+            LogPrint("Parameters file cannot be opened!")
+            return
+
+
+        if a.usecuda:
+            net = net.cuda()
+
+        results = []
+        for i, samples in enumerate(loader):
+            s = Variable(samples)
+            if a.usecuda:
+                s = s.cuda()
+            out = net.forward(s.unsqueeze(1)).squeeze() if a.stage == 1 else net.forward(s.permute(0, 3, 1, 2)[:,:2].float())
+            if a.stage == 1:
+                for j in xrange(out.data.size()[0]):
+                    results.append(out[j].data.cpu().numpy())
+            else:
+                val, guess = torch.max(out, 1)
+                results.append(guess.cpu().data.numpy().squeeze())
+                del val, guess
+
+            if a.plot:
+                if a.stage == 1:
+                    visualizeResults(s, out)
+
+
+        outdict = {'File': [], 'Proximal Phalanx': [], 'Metacarpal': [], 'Distal Phalanx': []}
+        for i, res in enumerate(results):
+            outdict['File'].append(os.path.basename(inputDataset.dataSourcePath[i]))
+            outdict['Proximal Phalanx'].append(np.array(res[0], dtype=int).tolist())
+            outdict['Metacarpal'].append(np.array(res[1], dtype=int).tolist())
+            outdict['Distal Phalanx'].append(np.array(res[2], dtype=int).tolist())
+        data = pd.DataFrame.from_dict(outdict)
+        data = data[['File', 'Proximal Phalanx', 'Metacarpal', 'Distal Phalanx']]
+        data.to_csv(a.output, index=False)
 
 
     pass
@@ -129,6 +195,8 @@ if __name__ == '__main__':
                         help="Path to a file with dictionary of training parameters written inside")
     parser.add_argument("--log", dest='log', action='store', type=str, default=None,
                         help="If specified, all the messages will be written to the specified file.")
+    parser.add_argument("--stage", dest='stage', default=1, action='store', type=int,
+                        help="Stage 1: Feature location, Stage2: TOCI classification")
     a = parser.parse_args()
 
     if a.log is None:
