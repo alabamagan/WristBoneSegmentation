@@ -127,7 +127,7 @@ def main(a):
                         print d.to_string()
 
             losses.append(E)
-            if np.array(E).mean() < lastloss:
+            if np.array(E).mean() <= lastloss:
                 backuppath = "./Backup/checkpoint_ConvNet.pt" if a.stage == 1 else "./Backup/checkpoint_WNet.pt"
                 torch.save(net.state_dict(), backuppath)
                 lastloss = np.array(E).mean()
@@ -200,7 +200,11 @@ def main(a):
                        'Guess': ["TOCI%s"%(i + 4) for i in results.tolist()]}
             data = pd.DataFrame.from_dict(outdict)
             data.to_csv(a.output, index=False)
-            print data.to_string
+            print data.to_string()
+            hit = []
+            for i, row in data.iterrows():
+                hit.append(row['File'].split('_')[0] == row['Guess'])
+            print "Hit rate: ", np.sum(hit) / float(len(hit))
 
 
 
