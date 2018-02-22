@@ -114,15 +114,9 @@ def main(a):
     # Evaluation mode
     else:
         import pandas as pd
-        if a.stage == 1:
-            inputDataset= ImageDataSet2D(a.input, dtype=np.float32, verbose=True)
-            loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
-            net = ConvNet(inputDataset[0].size()[1])
-        else:
-            imreader = lambda x: imread(x, as_grey=False)
-            inputDataset = ImageDataSet2D(a.input, dtype=np.uint8, verbose=True, as_grey=False, readfunc=imreader)
-            loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
-            net = WNet(5)
+        inputDataset= ImageDataSet2D(a.input, dtype=np.float32, verbose=True)
+        loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
+        net = ConvNet(inputDataset[0].size()[1])
 
         if os.path.isfile(a.checkpoint):
             LogPrint("Loading parameters " + a.checkpoint)
