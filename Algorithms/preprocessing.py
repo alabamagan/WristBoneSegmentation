@@ -2,6 +2,7 @@ import SimpleITK as sitk
 import numpy as np
 import fnmatch
 import os
+from MedImgDataset import ImageData
 sitk.ProcessObject_GlobalWarningDisplayOff()
 
 
@@ -290,3 +291,58 @@ def BatchRotateImage(dir, exception=[]):
     pass
 
 
+def MergeLabels(label1, label2, outname):
+    """
+    Description
+    -----------
+      Merge two label into one binary label. Must be nii format.
+
+    :param str label1:
+    :param str label2:
+    :param str outname:
+    :return:
+    """
+
+    assert os.path.isfile(label1) and os.path.isfile(label2)
+
+
+    l1 = sitk.Cast(sitk.ReadImage(label1), sitk.sitkUInt8)
+    l2 = sitk.Cast(sitk.ReadImage(label2), sitk.sitkUInt8)
+
+    l1, l2 = [sitk.BinaryThreshold(l, 1, 255, 1, 0) for l in [l1,l2]]
+
+    L = sitk.Add(l1, l2)
+    sitk.WriteImage(L, outname)
+    pass
+
+
+def CopyRecusrsivelyForKeyWards():
+    rootdir = "../ERA_Segmentation/01_RAW"
+    keywords = "segmentation_carpal"
+    prefix = ""
+    suffix = "_A_Carpal"
+    outdir = "11_CARPALS"
+    dirs = RecursiveListDir(3, rootdir)
+    dirs.sort()
+    for i, d in enumerate(dirs):
+        files = os.listdir(d)
+        for f in files:
+            if f.find(keywords) > 0:
+                # print i, d, f
+                os.system("cp %s %s"%(d + "/" + f, rootdir.replace("01_RAW", outdir + "/") + d.replace(rootdir+"/", "").replace("/ROI", "") + suffix + ".nii"))
+
+
+if __name__ == '__main__':
+    r1 = "../ERA_Segmentation/11_CARPALS"
+    r2 = "../ERA_Segmentation/12_META_CARPALS"
+
+    d1 = ImageData.ImageDataSet(r1, dtype=np.uint8, verbose=True)
+    d2 = ImageData.ImageDataSet(r2, dtype=np.uint8, verbose=True)
+
+    print d1, d2
+
+    for i, P in enumerate(zip(d1.dataSourcePath, d2.dataSourcePath)):
+        try:
+            MergeLabels(P[0], P[1], d1.dataSourcePath[i].replace('_A_', '_M_').replace("11_CARPALS", "23_MERGED_ONELABEL"))
+        except:
+            print i, " has some problem"
