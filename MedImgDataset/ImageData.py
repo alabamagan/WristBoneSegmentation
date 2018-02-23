@@ -72,6 +72,9 @@ class ImageDataSet(Dataset):
         self.dtype = dtype
         self._ParseRootDir()
 
+    def _UseCatagories(self, txtdir):
+        pass
+
     def _ParseRootDir(self):
         """
         Description
@@ -94,6 +97,8 @@ class ImageDataSet(Dataset):
             print "Start Loading"
 
         for f in filenames:
+            if self.verbose:
+                print "Reading from ", f
             im = sitk.ReadImage(self.rootdir + "/" + f)
             self.dataSourcePath.append(self.rootdir + "/" + f)
             self.data.append(from_numpy(np.array(sitk.GetArrayFromImage(im), dtype=self.dtype)))
@@ -144,7 +149,7 @@ class ImageDataSet(Dataset):
                                         round(self.metadata[i]['qoffset_y'], 2),
                                         round(self.metadata[i]['qoffset_z'], 2)])
         data = df(data=printable)
-        s += data.to_string()
+        s += data.to_string() + "\n"
         return s
 
     @staticmethod
