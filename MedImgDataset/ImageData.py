@@ -70,9 +70,52 @@ class ImageDataSet(Dataset):
         self.length = 0
         self.verbose = verbose
         self.dtype = dtype
+        self.useCatagory = False
+        self.catagory = None
         self._ParseRootDir()
 
-    def _UseCatagories(self, txtdir):
+    def _UseCatagories(self, txtdir, catagory=0):
+        """
+
+        :param txtdir:
+        :return:
+        """
+        import pandas as pd
+
+
+        assert os.path.isfile(txtdir)
+
+
+        def parse_category_string(str):
+            s = str.split('_')
+            out = []
+            for pairs in s:
+                if pairs.find('-') > -1:
+                    out.extend(range(int(pairs.split('-')[0]), int(pairs.split('-')[1])+1))
+                else:
+                    out.append(int(pairs))
+            return out
+
+        self.useCatagory = True
+        self.catagory = {}
+
+        cat = pd.read_csv(txtdir)
+        for i, row in cat.iterrows():
+            self.catagory[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in xrange(1,4)]
+
+        temp = []
+        for k in self.catagory.iterkeys():
+            for i in xrange(3):
+                for j in self.catagory[k][i]:
+                    temp.append([k,i + 1,j])
+
+        self._itemindexes = np.array(temp)
+
+        if catagory != 0:
+            assert catagory <= self._itemindexes[:,1].max(), "Selected catagory doesn't seemed to exist."
+            self._itemindexes = self._itemindexes[self._itemindexes[:,1] == catagory]
+            self.length = len(self._itemindexes)
+
         pass
 
     def _ParseRootDir(self):
@@ -120,7 +163,11 @@ class ImageDataSet(Dataset):
         return self.length
 
     def __getitem__(self, item):
-        return self.data[item]
+        if self.useCatagory:
+            index = self._itemindexes[item]
+            return self.data[index[0] - 1][index[2]-1]
+        else:
+            return self.data[item]
 
     def __str__(self):
         from pandas import DataFrame as df
