@@ -74,7 +74,7 @@ class ImageDataSet(Dataset):
         self.catagory = None
         self._ParseRootDir()
 
-    def _UseCatagories(self, txtdir, catagory=0):
+    def UseCatagories(self, txtdir, catagory=0):
         """
 
         :param txtdir:
@@ -103,8 +103,9 @@ class ImageDataSet(Dataset):
         for i, row in cat.iterrows():
             self.catagory[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in xrange(1,4)]
 
+        availablelist = [int(os.path.basename(d).split('_')[0]) for d in self.dataSourcePath]
         temp = []
-        for k in self.catagory.iterkeys():
+        for k in availablelist:
             for i in xrange(3):
                 for j in self.catagory[k][i]:
                     temp.append([k,i + 1,j])

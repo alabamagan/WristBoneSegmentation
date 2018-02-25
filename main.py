@@ -3,15 +3,16 @@ import os
 import logging
 import numpy as np
 
-from MedImgDataset import ImageDataSet2D, ImageFeaturePair, Landmarks
+from MedImgDataset import ImageDataSet
 from torch.utils.data import DataLoader, TensorDataset, sampler
 from torch.autograd import Variable
 from torchvision.datasets import ImageFolder
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 import torch
 import visualization
-from skimage.io import imread
+from Networks import UNet
 
 # import your own newtork
 
@@ -19,15 +20,11 @@ def LogPrint(msg, level=20):
     logging.getLogger(__name__).log(level, msg)
     print msg
 
-def visualizeResults(out, gt):
-    """
-
-    :param Variable out:
-    :param Varialbe gt:
-    :return:
-    """
-    visualization.VisualizeMapWithLandmarks(out.cpu().data.numpy() * 255, gt.cpu().data.numpy(),
-                              env="TOCI_run", N=45)
+def visualizeResults(input, out, gt, env='Wraist'):
+    val, index = torch.max(out, 1)
+    visualization.Visualize2D(input.data.cpu(), env=env, prefix='Input', nrow=1)
+    visualization.Visualize2D(gt.data.cpu(), env=env, prefix='GT', displayrange=[0, 2], nrow=1)
+    visualization.Visualize2D(index.squeeze().data.cpu(), env=env, prefix="OUTPUT", displayrange=[0, 2], nrow=1)
     pass
 
 def main(a):
@@ -42,22 +39,30 @@ def main(a):
     ##############################
     # Training Mode
     if not mode:
-        assert os.path.isfile(a.train), "Ground truth directory cannot be opened!"
-        inputDataset= ImageDataSet2D(a.input, dtype=np.float32, verbose=True)
-        gtDataset   = Landmarks(a.train)
-        trainingSet = ImageFeaturePair(inputDataset, gtDataset)
+        assert os.path.isdir(a.train), "Ground truth directory cannot be opened!"
+        inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True)
+        gtDataset   = ImageDataSet(a.train, dtype=np.uint8, verbose=True)
+        trainingSet = TensorDataset(inputDataset, gtDataset)
         loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True, num_workers=4)
                                  # sampler=sampler.WeightedRandomSampler(np.ones(len(trainingSet)).tolist(), a.batchsize*100))
 
 
+        if a.useCatagory != 0:
+            assert os.path.isfile(a.catagoriesIndex)
+            inputDataset.UseCatagories(a.catagoriesIndex, a.useCatagory)
+            gtDataset.UseCatagories(a.catagoriesIndex, a.useCatagory)
+
         # Load Checkpoint or create new network
         #-----------------------------------------
-        net = ConvNet(inputDataset[0].size()[1]) if a.stage == 1 else WNet(5)
+        net = UNet(2, in_channels=1, depth=5, start_filts=64, up_mode='upsample')
         net.train(True)
-        if os.path.isfile(a.checkpoint):
-            assert os.path.isfile(a.checkpoint)
+        if os.path.isfile(a.checkpoint) :
             LogPrint("Loading checkpoint " + a.checkpoint)
             net.load_state_dict(torch.load(a.checkpoint))
+        elif a.checkpoint != '':
+            LogPrint("Cannot locate checkpoint!")
+            return
+            # net = torch.load(a.checkpoint)
 
         trainparams = {}
         if not a.trainparams is None:
@@ -68,7 +73,7 @@ def main(a):
         mm = trainparams['momentum'] if trainparams.has_key('momentum') else 0.01
 
 
-        criterion = nn.SmoothL1Loss()
+        criterion = nn.NLLLoss2d()
         optimizer = optim.SGD([{'params': net.parameters(),
                                 'lr': lr, 'momentum': mm}])
         if a.usecuda:
@@ -87,8 +92,8 @@ def main(a):
                 else:
                     s, g = samples[0], samples[1]
 
-                out = net.forward(s.unsqueeze(1))
-                loss = criterion(out,g.float())
+                out = F.log_softmax(net.forward(s.unsqueeze(1)))
+                loss = criterion(out,g.long())
 
 
                 loss.backward()
@@ -96,11 +101,11 @@ def main(a):
                 E.append(loss.data[0])
                 print "\t[Step %04d] Loss: %.010f"%(index, loss.data[0])
                 if a.plot:
-                    visualizeResults(s, out)
+                    visualizeResults(s, out, g, "Wraist_%02d"%a.useCatagory)
 
             losses.append(E)
             if np.array(E).mean() <= lastloss:
-                backuppath = "./Backup/checkpoint_ConvNet.pt" if a.stage == 1 else "./Backup/checkpoint_WNet.pt"
+                backuppath = "./Backup/checkpoint_%s_Cat_%i.pt"%(a.checkpointSuffix ,a.useCatagory)
                 torch.save(net.state_dict(), backuppath)
                 lastloss = np.array(E).mean()
             print "[Epoch %04d] Loss: %.010f"%(i, np.array(E).mean())
@@ -114,9 +119,13 @@ def main(a):
     # Evaluation mode
     else:
         import pandas as pd
-        inputDataset= ImageDataSet2D(a.input, dtype=np.float32, verbose=True)
+        inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True)
         loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
-        net = ConvNet(inputDataset[0].size()[1])
+        net = UNet(2, in_channels=1, depth=5, start_filts=64, up_mode='upsample')
+
+        if a.useCatagory != 0:
+            assert os.path.isfile(a.catagoriesIndex)
+            inputDataset.useCatagory(a.catagoriesIndex, a.useCatagory)
 
         if os.path.isfile(a.checkpoint):
             LogPrint("Loading parameters " + a.checkpoint)
@@ -146,7 +155,7 @@ def main(a):
 
             if a.plot:
                 if a.stage == 1:
-                    visualizeResults(s, out)
+                    visualizeResults(s, g, out)
 
 
         outdict = {'File': [], 'Proximal Phalanx': [], 'Metacarpal': [], 'Distal Phalanx': []}
@@ -181,6 +190,12 @@ if __name__ == '__main__':
                         help="Specify how many steps to run per epoch.")
     parser.add_argument("-b", "--batchsize", dest='batchsize', action='store', type=int, default=5,
                         help="Specify batchsize in each iteration.")
+    parser.add_argument('-c', "--useCatagory", dest='useCatagory', action='store', type=int, default=0,
+                        help="Set the catagory you wish to process. Must be used with option -C or --Catagories")
+    parser.add_argument("-C", "--Catagories", dest='catagoriesIndex', action='store', type=str, default=None,
+                        help="Use the catagory txt file to load the data.")
+    parser.add_argument("--checkpoint-suffix", dest='checkpointSuffix', action='store', type=str, default='UNET',
+                        help="Set the suffix of the checkpoint that will be saved in the Backup folder")
     parser.add_argument("--load", dest='checkpoint', action='store', default='',
                         help="Specify network checkpoint.")
     parser.add_argument("--useCUDA", dest='usecuda', action='store_true',default=False,

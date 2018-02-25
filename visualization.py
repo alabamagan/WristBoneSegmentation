@@ -69,7 +69,7 @@ def Visualize2D(*args, **kwargs):
     """
     axis = kwargs['axis'] if kwargs.has_key('axis') else 0
     env = kwargs['env'] if kwargs.has_key('env') else "Name"
-    prefix = kwargs['env'] if kwargs.has_key('Image') else 'Image'
+    prefix = kwargs['prefix'] if kwargs.has_key('prefix') else 'Image'
     displayrange = kwargs['displayrange'] if kwargs.has_key('displayrange') else [0, 0]
     indexrange = kwargs['indexrange'] if kwargs.has_key('indexrange') else [0, 15]
     nrow = kwargs['nrow'] if kwargs.has_key('nrow') else 5
