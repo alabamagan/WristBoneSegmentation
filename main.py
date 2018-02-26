@@ -69,6 +69,7 @@ def main(a):
             import ast
             trainparams = ast.literal_eval(a.trainparams)
 
+
         lr = trainparams['lr'] if trainparams.has_key('lr') else 1e-5
         mm = trainparams['momentum'] if trainparams.has_key('momentum') else 0.01
 
@@ -118,56 +119,70 @@ def main(a):
 
     # Evaluation mode
     else:
-        import pandas as pd
+        import SimpleITK as sitk
+
         inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True)
-        loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
         net = UNet(2, in_channels=1, depth=5, start_filts=64, up_mode='upsample')
 
-        if a.useCatagory != 0:
-            assert os.path.isfile(a.catagoriesIndex)
-            inputDataset.useCatagory(a.catagoriesIndex, a.useCatagory)
+        # automatically requires catogories index
+        assert os.path.isfile(a.catagoriesIndex)
 
-        if os.path.isfile(a.checkpoint):
-            LogPrint("Loading parameters " + a.checkpoint)
-            net.load_state_dict(torch.load(a.checkpoint))
-            net.train(False)
-        else:
-            LogPrint("Parameters file cannot be opened!")
+        # Mkdir if not exist
+        if not os.path.isdir(a.output):
+            LogPrint("Making directory for output...")
+            os.mkdir(a.output)
+
+        # requires the checkpoints named as checkpoint_UNET_Cat_2.pt and checkpoint_UNET_Cat_3.pt in
+        # the checkpoint directories
+        if not os.path.isdir(a.checkpoint):
+            LogPrint("Cannot open directory " + a.checkpoint)
             return
 
+        indexes = []
+        concat = []
+        for k, cp in enumerate(['checkpoint_UNET_Cat_2.pt','checkpoint_UNET_Cat_3.pt']):
+            assert os.path.isfile(a.checkpoint + '/' + cp)
+            LogPrint("Loading parameters " + a.checkpoint)
+            net.load_state_dict(torch.load(a.checkpoint + "/" + cp))
+            net.train(False)
+            inputDataset.UseCatagories(a.catagoriesIndex, k + 2)
+            loader = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
 
-        if a.usecuda:
-            net = net.cuda()
-
-        results = []
-        for i, samples in enumerate(loader):
-            s = Variable(samples)
             if a.usecuda:
-                s = s.cuda()
-            out = net.forward(s.unsqueeze(1)).squeeze() if a.stage == 1 else net.forward(s.permute(0, 3, 1, 2)[:,:2].float())
-            if a.stage == 1:
-                for j in xrange(out.data.size()[0]):
-                    results.append(out[j].data.cpu().numpy())
-            else:
-                val, guess = torch.max(out, 1)
-                results.append(guess.cpu().data.numpy().squeeze())
-                del val, guess
+                net = net.cuda()
 
-            if a.plot:
-                if a.stage == 1:
-                    visualizeResults(s, g, out)
+            results = []
+            for i, samples in enumerate(loader):
+                s = Variable(samples)
+                if a.usecuda:
+                    s = s.cuda()
+                out = net.forward(s.unsqueeze(1)).squeeze() if a.stage == 1 else net.forward(s.permute(0, 3, 1, 2)[:,:2].float())
+                out = F.log_softmax(out)
+                val, seg = torch.max(out, 1)
+                results.append(seg.squeeze().data.cpu().numpy())
+                if a.plot:
+                    visualizeResults(s, out, seg.squeeze(), "Wraist_Test")
 
+                del out, val, seg, samples
+            concat.append(np.concatenate(results,0))
+            indexes.append(inputDataset._itemindexes)
+        concat = np.concatenate(concat,0)
+        indexes = np.concatenate(indexes,0)
 
-        outdict = {'File': [], 'Proximal Phalanx': [], 'Metacarpal': [], 'Distal Phalanx': []}
-        for i, res in enumerate(results):
-            outdict['File'].append(os.path.basename(inputDataset.dataSourcePath[i]))
-            outdict['Proximal Phalanx'].append(np.array(res[0], dtype=int).tolist())
-            outdict['Metacarpal'].append(np.array(res[1], dtype=int).tolist())
-            outdict['Distal Phalanx'].append(np.array(res[2], dtype=int).tolist())
-        data = pd.DataFrame.from_dict(outdict)
-        data = data[['File', 'Proximal Phalanx', 'Metacarpal', 'Distal Phalanx']]
-        data.to_csv(a.output, index=False)
+        for i in xrange(len(inputDataset.dataSourcePath)):
+            LogPrint("Wroking on image: " + inputDataset.dataSourcePath[i])
+            dim = [inputDataset.metadata[i]['dim[1]'],
+                   inputDataset.metadata[i]['dim[2]'],
+                   inputDataset.metadata[i]['dim[3]']]
+            t = concat[indexes[:,0] == i]
+            seg = np.zeros(dim, dtype=np.uint8)
+            seg = seg.transpose(2,0,1)
+            ind = indexes[indexes[:,0] == i]
+            for j, l in enumerate(ind):
+                seg[l[2]-1] = t[j]
 
+            im = ImageDataSet.WrapImageWithMetaData(seg, inputDataset.metadata[i])
+            sitk.WriteImage(im, a.output + "/" + os.path.basename(inputDataset.dataSourcePath[i]))
 
     pass
 

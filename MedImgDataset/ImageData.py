@@ -105,9 +105,9 @@ class ImageDataSet(Dataset):
 
         availablelist = [int(os.path.basename(d).split('_')[0]) for d in self.dataSourcePath]
         temp = []
-        for k in availablelist:
+        for k,x in enumerate(availablelist):
             for i in xrange(3):
-                for j in self.catagory[k][i]:
+                for j in self.catagory[x][i]:
                     temp.append([k,i + 1,j])
 
         self._itemindexes = np.array(temp)
@@ -166,7 +166,7 @@ class ImageDataSet(Dataset):
     def __getitem__(self, item):
         if self.useCatagory:
             index = self._itemindexes[item]
-            return self.data[index[0] - 1][index[2]-1]
+            return self.data[index[0]][index[2]-1]
         else:
             return self.data[item]
 
@@ -180,7 +180,7 @@ class ImageDataSet(Dataset):
         # "File Paths\tSize\t\tSpacing\t\tOrigin\n"
         # printable = {'File Name': []}
         printable = {'File Name': [], 'Size': [], 'Spacing': [], 'Origin': []}
-        for i in xrange(self.length):
+        for i in xrange(len(self.data)):
             printable['File Name'].append(os.path.basename(self.dataSourcePath[i]))
             # for keys in self.metadata[i]:
             #     if not printable.has_key(keys):
