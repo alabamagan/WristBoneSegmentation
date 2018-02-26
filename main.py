@@ -158,8 +158,15 @@ def main(a):
                     s = s.cuda()
                 out = net.forward(s.unsqueeze(1)).squeeze() if a.stage == 1 else net.forward(s.permute(0, 3, 1, 2)[:,:2].float())
                 out = F.log_softmax(out)
-                val, seg = torch.max(out, 1)
-                results.append(seg.squeeze().data.cpu().numpy())
+                if out.data.dim() == 3:
+                    val, seg = torch.max(out, 0)
+                    results.append(seg.data.cpu().numpy())
+                elif out.data.dim() == 4:
+                    val, seg = torch.max(out, 1)
+                    results.append(seg.squeeze().data.cpu().numpy())
+                else:
+                    LogPrint("Dimension of output is incorrect!")
+
                 if a.plot:
                     visualizeResults(s, out, seg.squeeze(), "Wraist_Test")
 
