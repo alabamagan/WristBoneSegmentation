@@ -1,9 +1,11 @@
 from torch.utils.data import Dataset
-from torch import from_numpy
+from torch import from_numpy, cat as concat
 import fnmatch
 import os
 import numpy as np
 import SimpleITK as sitk
+from imgaug import augmenters as iaa
+from skimage.transform import resize
 
 NIFTI_DICT = {
     "sizeof_hdr": int,
@@ -71,8 +73,57 @@ class ImageDataSet(Dataset):
         self.verbose = verbose
         self.dtype = dtype
         self.useCatagory = False
+        self.loadCatagory = False
         self.catagory = None
         self._ParseRootDir()
+
+
+    def LoadWithCatagories(self, txtdir):
+        """
+        Writter for inception
+
+        :param txtdir:
+        :return:
+        """
+        import pandas as pd
+
+
+        assert os.path.isfile(txtdir)
+
+
+        def parse_category_string(str):
+            s = str.split('_')
+            out = []
+            for pairs in s:
+                if pairs.find('-') > -1:
+                    out.extend(range(int(pairs.split('-')[0]), int(pairs.split('-')[1])+1))
+                else:
+                    out.append(int(pairs))
+            return out
+
+        self.catagory = {}
+        cat = pd.read_csv(txtdir)
+        for i, row in cat.iterrows():
+            self.catagory[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in xrange(1,4)]
+
+        availablelist = [int(os.path.basename(d).split('_')[0]) for d in self.dataSourcePath]
+        temp = []
+        for k,x in enumerate(availablelist):
+            catlist = np.zeros(self.data[k].size(0))
+            for i in xrange(3):
+                for j in self.catagory[x][i]:
+                    catlist[j - 1] = i
+            temp.extend(catlist)
+        temp = np.array(temp).flatten()
+
+        data = concat(self.data, dim=0).numpy()
+        self.data = np.concatenate([self.ResizeToSquare(data[i], 299)[None,:] for i in xrange(data.shape[0])])
+        self.data = from_numpy(self.data)
+
+        self._catagories = from_numpy(temp)
+        self.length = self.data.size(0)
+        self.loadCatagory = True
+        pass
 
     def UseCatagories(self, txtdir, catagory=0):
         """
@@ -156,6 +207,7 @@ class ImageDataSet(Dataset):
                 except:
                     metadata[key] = im.GetMetaData(key)
             self.metadata.append(metadata)
+        self.length = np.sum([m.size()[0] for m in self.data])
 
     def size(self, int):
         return self.length
@@ -167,8 +219,10 @@ class ImageDataSet(Dataset):
         if self.useCatagory:
             index = self._itemindexes[item]
             return self.data[index[0]][index[2]-1]
+        elif self.loadCatagory:
+            return self.data[item], self._catagories[item]
         else:
-            return self.data[item]
+            return concat(self.data, 0)[item]
 
     def __str__(self):
         from pandas import DataFrame as df
@@ -230,6 +284,11 @@ class ImageDataSet(Dataset):
         im.SetDirection(A.flatten())
         im.SetSpacing(spacing)
         return im
+
+    @staticmethod
+    def ResizeToSquare(im, s):
+        # Get data
+        return resize(im, [s, s], preserve_range=True, mode='constant')
 
 class MaskedTensorDataset(Dataset):
     """
