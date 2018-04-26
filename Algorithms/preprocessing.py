@@ -308,10 +308,9 @@ def MergeLabels(label1, label2, outname):
 
     l1 = sitk.Cast(sitk.ReadImage(label1), sitk.sitkUInt8)
     l2 = sitk.Cast(sitk.ReadImage(label2), sitk.sitkUInt8)
-
-    l1, l2 = [sitk.BinaryThreshold(l, 1, 255, 1, 0) for l in [l1,l2]]
-
     L = sitk.Add(l1, l2)
+    L = sitk.BinaryThreshold(L, 1, 255, 1, 0)
+
     sitk.WriteImage(L, outname)
     pass
 
@@ -349,26 +348,19 @@ def RenameIndexes(dir):
         os.rename(dir + "/" + f, dir + "/" + F)
     pass
 
-# if __name__ == '__main__':
-#     from torch.utils.data import dataloader
-#     r1 = "../ERA_Segmentation/11_CARPALS"
-#     r2 = "../ERA_Segmentation/12_META_CARPALS"
-#
-#     d1 = ImageData.ImageDataSet(r1, dtype=np.uint8, verbose=True)
-#     d1._UseCatagories("../ERA_Segmentation/CaseSegment.txt", 3)
-#     print len(d1)
-#     loader = dataloader.DataLoader(d1, batch_size=15)
-#     for i, b in enumerate(loader):
-#         print i, len(b)
-#
+if __name__ == '__main__':
+    from torch.utils.data import dataloader
+    r1 = "../ERA_Segmentation/11_CARPALS"
+    r2 = "../ERA_Segmentation/12_META_CARPALS"
 
-    # d2 = ImageData.ImageDataSet(r2, dtype=np.uint8, verbose=True)
-    #
-    # print d1, d2
-    #
-    # for i, P in enumerate(zip(d1.dataSourcePath, d2.dataSourcePath)):
-    #     try:
-    #         MergeLabels(P[0], P[1], d1.dataSourcePath[i].replace('_A_', '_M_').replace("11_CARPALS", "23_MERGED_ONELABEL"))
-    #     except:
-    #         print i, " has some problem"
+    d1 = ImageData.ImageDataSet(r1, dtype=np.uint8, verbose=True)
+    d2 = ImageData.ImageDataSet(r2, dtype=np.uint8, verbose=True)
+
+    print d1, d2
+
+    for i, P in enumerate(zip(d1.dataSourcePath, d2.dataSourcePath)):
+        try:
+            MergeLabels(P[0], P[1], d1.dataSourcePath[i].replace('_A_', '_M_').replace("11_CARPALS", "23_MERGED_ONELABEL"))
+        except:
+            print i, " has some problem"
 
