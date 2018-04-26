@@ -28,7 +28,7 @@ def upconv2x2(in_channels, out_channels, mode='transpose'):
         # out_channels is always going to be the same
         # as in_channels
         return nn.Sequential(
-            nn.UpsamplingBilinear2d(scale_factor=2),
+            nn.Upsample(scale_factor=2),
             conv1x1(in_channels, out_channels))
 
 def conv1x1(in_channels, out_channels, groups=1):
