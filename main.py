@@ -6,14 +6,18 @@ import numpy as np
 from MedImgDataset import ImageDataSet
 from torch.utils.data import DataLoader, TensorDataset, sampler
 from torch.autograd import Variable
-from torchvision.datasets import ImageFolder
+from torchvision.utils import make_grid
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch
 import visualization
 from Networks import UNet
+from tqdm import tqdm
+import datetime
+from scipy.spatial.distance import dice
 
+from tensorboardX import SummaryWriter
 # import your own newtork
 
 def LogPrint(msg, level=20):
@@ -46,7 +50,8 @@ def main(a):
         loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True, num_workers=4)
                                  # sampler=sampler.WeightedRandomSampler(np.ones(len(trainingSet)).tolist(), a.batchsize*100))
 
-
+        writer = SummaryWriter("/media/storage/PytorchRuns/WristSegment_"+datetime.datetime.now().strftime("%Y%m%d_%H%M"))
+        # writer = SummaryWriter("/media/storage/PytorchRuns/WristSegment_Cat%s_V2_DICE"%a.useCatagory)
         if a.useCatagory != 0:
             assert os.path.isfile(a.catagoriesIndex)
             inputDataset.UseCatagories(a.catagoriesIndex, a.useCatagory)
@@ -73,7 +78,6 @@ def main(a):
         lr = trainparams['lr'] if trainparams.has_key('lr') else 1e-5
         mm = trainparams['momentum'] if trainparams.has_key('momentum') else 0.01
 
-
         criterion = nn.NLLLoss2d()
         optimizer = optim.SGD([{'params': net.parameters(),
                                 'lr': lr, 'momentum': mm}])
@@ -84,7 +88,7 @@ def main(a):
 
         lastloss = 1e32
         losses = []
-        for i in xrange(a.epoch):
+        for i in tqdm(range(a.epoch)):
             E = []
             for index, samples in enumerate(loader):
                 if a.usecuda:
@@ -93,23 +97,41 @@ def main(a):
                 else:
                     s, g = samples[0], samples[1]
 
-                out = F.log_softmax(net.forward(s.unsqueeze(1)))
+                out = F.log_softmax(net.forward(s.unsqueeze(1)), dim=1)
                 loss = criterion(out,g.long())
 
 
                 loss.backward()
                 optimizer.step()
                 E.append(loss.data[0])
-                print "\t[Step %04d] Loss: %.010f"%(index, loss.data[0])
+                tqdm.write("\t[Step %04d] Loss: %.010f"%(index, loss.data[0]))
                 if a.plot:
-                    visualizeResults(s, out, g, "Wraist_%02d"%a.useCatagory)
+                    step = i * len(loader) + index
+                    vals, outimnumpy = torch.max(out, 1)
+                    gtim = make_grid(F.max_pool2d(g.unsqueeze(1).float(), 4).cpu().data, nrow=2, padding=1, normalize=True)
+                    vals, outim = torch.max(F.max_pool2d(out, 4), 1)
+                    outim = make_grid(outim.cpu().unsqueeze(1).float().data, nrow=2, padding=1, normalize=True)
+                    inputim = make_grid(F.avg_pool2d(s.unsqueeze(1), 4).cpu().data, nrow=2, padding=1, normalize=True)
+                    DICE = dice(outimnumpy.data.cpu().numpy().flatten().astype('bool'), g.data.cpu().numpy().flatten().astype('bool'))
+                    writer.add_image('Wrist_Segment_Cat%s/GroundTruth'%a.useCatagory, gtim, step)
+                    writer.add_image('Wrist_Segment_Cat%s/Output'%a.useCatagory, outim, step)
+                    writer.add_image('Wrist_Segment_Cat%s/Input'%a.useCatagory, inputim, step)
+                    writer.add_scalar('Wrist_Segment_Cat%s/Loss'%a.useCatagory, loss.data[0], step)
+                    writer.add_scalar('Wrist_Segment_Cat%s/DICE'%a.useCatagory, 1-DICE, step)
+                    # writer.add_image('Wrist_Segment_Cat0/GroundTruth', gtim, step)
+                    # writer.add_image('Wrist_Segment_Cat0/Output', outim, step)
+                    # writer.add_image('Wrist_Segment_Cat0/Input', inputim, step)
+                    # writer.add_scalar('Wrist_Segment_Cat0/Loss', loss.data[0], step)
+                    # writer.add_scalar('Wrist_Segment_Cat0/DICE', 1 - DICE, step)
+                    # visualizeResults(s, out, g, "Wraist_%02d"%a.useCatagory)
 
             losses.append(E)
             if np.array(E).mean() <= lastloss:
-                backuppath = "./Backup/checkpoint_%s_Cat_%i.pt"%(a.checkpointSuffix ,a.useCatagory)
+                backuppath = "./Backup/checkpoint_%s_Cat_%i.pt"%(a.checkpointSuffix ,a.useCatagory) if a.useCatagory != 0 else \
+                    "./Backup/checkpoint_NoCat.pt"
                 torch.save(net.state_dict(), backuppath)
                 lastloss = np.array(E).mean()
-            print "[Epoch %04d] Loss: %.010f"%(i, np.array(E).mean())
+            tqdm.write("[Epoch %04d] Loss: %.010f"%(i, np.array(E).mean()))
 
              # Decay learning rate
             if a.decay != 0:
@@ -142,7 +164,7 @@ def main(a):
         concat = []
         for k, cp in enumerate(['checkpoint_UNET_Cat_2.pt','checkpoint_UNET_Cat_3.pt']):
             assert os.path.isfile(a.checkpoint + '/' + cp)
-            LogPrint("Loading parameters " + a.checkpoint)
+            LogPrint("Loading parameters " + a.checkpoint + "/" + cp)
             net.load_state_dict(torch.load(a.checkpoint + "/" + cp))
             net.train(False)
             inputDataset.UseCatagories(a.catagoriesIndex, k + 2)
