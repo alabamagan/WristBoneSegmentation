@@ -113,22 +113,23 @@ def main(a):
                     outim = make_grid(outim.cpu().unsqueeze(1).float().data, nrow=2, padding=1, normalize=True)
                     inputim = make_grid(F.avg_pool2d(s.unsqueeze(1), 4).cpu().data, nrow=2, padding=1, normalize=True)
                     DICE = dice(outimnumpy.data.cpu().numpy().flatten().astype('bool'), g.data.cpu().numpy().flatten().astype('bool'))
-                    writer.add_image('Wrist_Segment_Cat%s/GroundTruth'%a.useCatagory, gtim, step)
-                    writer.add_image('Wrist_Segment_Cat%s/Output'%a.useCatagory, outim, step)
-                    writer.add_image('Wrist_Segment_Cat%s/Input'%a.useCatagory, inputim, step)
-                    writer.add_scalar('Wrist_Segment_Cat%s/Loss'%a.useCatagory, loss.data[0], step)
-                    writer.add_scalar('Wrist_Segment_Cat%s/DICE'%a.useCatagory, 1-DICE, step)
-                    # writer.add_image('Wrist_Segment_Cat0/GroundTruth', gtim, step)
-                    # writer.add_image('Wrist_Segment_Cat0/Output', outim, step)
-                    # writer.add_image('Wrist_Segment_Cat0/Input', inputim, step)
-                    # writer.add_scalar('Wrist_Segment_Cat0/Loss', loss.data[0], step)
-                    # writer.add_scalar('Wrist_Segment_Cat0/DICE', 1 - DICE, step)
+                    # writer.add_image('Wrist_Segment_Cat%s/GroundTruth'%a.useCatagory, gtim, step)
+                    # writer.add_image('Wrist_Segment_Cat%s/Output'%a.useCatagory, outim, step)
+                    # writer.add_image('Wrist_Segment_Cat%s/Input'%a.useCatagory, inputim, step)
+                    # writer.add_scalar('Wrist_Segment_Cat%s/Loss'%a.useCatagory, loss.data[0], step)
+                    # writer.add_scalar('Wrist_Segment_Cat%s/DICE'%a.useCatagory, 1-DICE, step)
+                    writer.add_image('Wrist_Segment_Cat0/GroundTruth', gtim, step)
+                    writer.add_image('Wrist_Segment_Cat0/Output', outim, step)
+                    writer.add_image('Wrist_Segment_Cat0/Input', inputim, step)
+                    writer.add_scalar('Wrist_Segment_Cat0/Loss', loss.data[0], step)
+                    writer.add_scalar('Wrist_Segment_Cat0/DICE', 1 - DICE, step)
                     # visualizeResults(s, out, g, "Wraist_%02d"%a.useCatagory)
 
             losses.append(E)
             if np.array(E).mean() <= lastloss:
-                backuppath = "./Backup/checkpoint_%s_Cat_%i.pt"%(a.checkpointSuffix ,a.useCatagory) if a.useCatagory != 0 else \
-                    "./Backup/checkpoint_NoCat.pt"
+                # backuppath = "./Backup/checkpoint_%s_Cat_%i.pt"%(a.checkpointSuffix ,a.useCatagory) if a.useCatagory != 0 else \
+                #     "./Backup/checkpoint_NoCat.pt"
+                backuppath = "./Backup/checkpoint_NoCat.pt"
                 torch.save(net.state_dict(), backuppath)
                 lastloss = np.array(E).mean()
             tqdm.write("[Epoch %04d] Loss: %.010f"%(i, np.array(E).mean()))
@@ -146,72 +147,101 @@ def main(a):
         inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True)
         net = UNet(2, in_channels=1, depth=5, start_filts=64, up_mode='upsample')
 
-        # automatically requires catogories index
-        assert os.path.isfile(a.catagoriesIndex)
-
-        # Mkdir if not exist
-        if not os.path.isdir(a.output):
-            LogPrint("Making directory for output...")
-            os.mkdir(a.output)
-
-        # requires the checkpoints named as checkpoint_UNET_Cat_2.pt and checkpoint_UNET_Cat_3.pt in
-        # the checkpoint directories
-        if not os.path.isdir(a.checkpoint):
-            LogPrint("Cannot open directory " + a.checkpoint)
-            return
-
         indexes = []
         concat = []
-        for k, cp in enumerate(['checkpoint_UNET_Cat_2.pt','checkpoint_UNET_Cat_3.pt']):
-            assert os.path.isfile(a.checkpoint + '/' + cp)
-            LogPrint("Loading parameters " + a.checkpoint + "/" + cp)
-            net.load_state_dict(torch.load(a.checkpoint + "/" + cp))
+        if os.path.isfile(a.catagoriesIndex):
+            LogPrint("Using catagories...")
+            # requires the checkpoints named as checkpoint_UNET_Cat_2.pt and checkpoint_UNET_Cat_3.pt in
+            # the checkpoint directories
+            if not os.path.isdir(a.checkpoint):
+                LogPrint("Cannot open directory " + a.checkpoint)
+                return
+
+            for k, cp in enumerate(['checkpoint_UNET_Cat_2.pt','checkpoint_UNET_Cat_3.pt']):
+                assert os.path.isfile(a.checkpoint + '/' + cp)
+                LogPrint("Loading parameters " + a.checkpoint + "/" + cp)
+                net.load_state_dict(torch.load(a.checkpoint + "/" + cp))
+                net.train(False)
+                inputDataset.UseCatagories(a.catagoriesIndex, k + 2)
+                loader = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
+
+                if a.usecuda:
+                    net = net.cuda()
+
+                results = []
+                for i, samples in enumerate(loader):
+                    s = Variable(samples, volatile=True)
+                    if a.usecuda:
+                        s = s.cuda()
+                    out = net.forward(s.unsqueeze(1)).squeeze() if a.stage == 1 else net.forward(s.permute(0, 3, 1, 2)[:,:2].float())
+                    out = F.log_softmax(out, dim=1)
+                    if out.data.dim() == 3:
+                        val, seg = torch.max(out, 0)
+                        results.append(seg.data.cpu().numpy()[None, :])
+                    elif out.data.dim() == 4:
+                        val, seg = torch.max(out, 1)
+                        results.append(seg.squeeze().data.cpu().numpy())
+                    else:
+                        LogPrint("Dimension of output is incorrect!")
+
+                    del out, val, seg, samples
+                concat.append(np.concatenate(results,0))
+                indexes.append(inputDataset._itemindexes)
+            concat = np.concatenate(concat,0)
+            indexes = np.concatenate(indexes,0)
+
+            for i in xrange(len(inputDataset.dataSourcePath)):
+                LogPrint("Wroking on image: " + inputDataset.dataSourcePath[i])
+                dim = [inputDataset.metadata[i]['dim[1]'],
+                       inputDataset.metadata[i]['dim[2]'],
+                       inputDataset.metadata[i]['dim[3]']]
+                t = concat[indexes[:,0] == i]
+                seg = np.zeros(dim, dtype=np.uint8)
+                seg = seg.transpose(2,0,1)
+                ind = indexes[indexes[:,0] == i]
+                for j, l in enumerate(ind):
+                    seg[l[2]-1] = t[j]
+
+                im = ImageDataSet.WrapImageWithMetaData(seg, inputDataset.metadata[i])
+                sitk.WriteImage(im, a.output + "/" + os.path.basename(inputDataset.dataSourcePath[i]))
+        else:
+            LogPrint("Loading parameters " + a.checkpoint)
+            net.load_state_dict(torch.load(a.checkpoint))
             net.train(False)
-            inputDataset.UseCatagories(a.catagoriesIndex, k + 2)
             loader = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False)
 
             if a.usecuda:
                 net = net.cuda()
 
             results = []
-            for i, samples in enumerate(loader):
-                s = Variable(samples)
+            for i, samples in enumerate(tqdm(loader)):
+                s = Variable(samples, volatile=True)
                 if a.usecuda:
                     s = s.cuda()
                 out = net.forward(s.unsqueeze(1)).squeeze() if a.stage == 1 else net.forward(s.permute(0, 3, 1, 2)[:,:2].float())
-                out = F.log_softmax(out)
+                out = F.log_softmax(out, dim=1)
                 if out.data.dim() == 3:
                     val, seg = torch.max(out, 0)
-                    results.append(seg.data.cpu().numpy())
+                    results.append(seg.data.cpu().numpy()[None, :])
                 elif out.data.dim() == 4:
                     val, seg = torch.max(out, 1)
                     results.append(seg.squeeze().data.cpu().numpy())
                 else:
                     LogPrint("Dimension of output is incorrect!")
 
-                if a.plot:
-                    visualizeResults(s, out, seg.squeeze(), "Wraist_Test")
-
                 del out, val, seg, samples
-            concat.append(np.concatenate(results,0))
-            indexes.append(inputDataset._itemindexes)
-        concat = np.concatenate(concat,0)
-        indexes = np.concatenate(indexes,0)
+            concat = np.concatenate(results,0)
 
-        for i in xrange(len(inputDataset.dataSourcePath)):
-            LogPrint("Wroking on image: " + inputDataset.dataSourcePath[i])
-            dim = [inputDataset.metadata[i]['dim[1]'],
-                   inputDataset.metadata[i]['dim[2]'],
-                   inputDataset.metadata[i]['dim[3]']]
-            t = concat[indexes[:,0] == i]
-            seg = np.zeros(dim, dtype=np.uint8)
-            seg = seg.transpose(2,0,1)
-            ind = indexes[indexes[:,0] == i]
-            for j, l in enumerate(ind):
-                seg[l[2]-1] = t[j]
 
-            im = ImageDataSet.WrapImageWithMetaData(seg, inputDataset.metadata[i])
-            sitk.WriteImage(im, a.output + "/" + os.path.basename(inputDataset.dataSourcePath[i]))
+            for i in range(len(inputDataset.dataSourcePath)):
+                startindex = inputDataset._itemindexes[i]
+                endindex = inputDataset._itemindexes[i + 1]
+                LogPrint("Wroking on image: " + inputDataset.dataSourcePath[i])
+                seg = np.copy(concat[startindex:endindex])
+
+                im = ImageDataSet.WrapImageWithMetaData(seg.astype('uint8'), inputDataset.metadata[i])
+                sitk.WriteImage(im, a.output + "/" + os.path.basename(inputDataset.dataSourcePath[i]))
+
 
     pass
 

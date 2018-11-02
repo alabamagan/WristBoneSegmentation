@@ -5,7 +5,9 @@ import os
 import numpy as np
 import SimpleITK as sitk
 from imgaug import augmenters as iaa
+import pandas as pd
 from skimage.transform import resize
+from tqdm import tqdm
 
 NIFTI_DICT = {
     "sizeof_hdr": int,
@@ -161,7 +163,7 @@ class ImageDataSet(Dataset):
                 for j in self.catagory[x][i]:
                     temp.append([k,i + 1,j])
 
-        self._itemindexes = np.array(temp)
+        self._itemindexes = np.array(temp) # [image index, catagory, slice number of]
 
         if catagory != 0:
             assert catagory <= self._itemindexes[:,1].max(), "Selected catagory doesn't seemed to exist."
@@ -169,6 +171,7 @@ class ImageDataSet(Dataset):
             self.length = len(self._itemindexes)
 
         pass
+
 
     def _ParseRootDir(self):
         """
@@ -191,12 +194,14 @@ class ImageDataSet(Dataset):
             print "Found %s nii.gz files..."%self.length
             print "Start Loading"
 
-        for f in filenames:
+        self._itemindexes = [0] # [image index of start slice]
+        for i, f in enumerate(tqdm(filenames, disable=not self.verbose)):
             if self.verbose:
-                print "Reading from ", f
+                tqdm.write("Reading from "+f)
             im = sitk.ReadImage(self.rootdir + "/" + f)
             self.dataSourcePath.append(self.rootdir + "/" + f)
             self.data.append(from_numpy(np.array(sitk.GetArrayFromImage(im), dtype=self.dtype)))
+            self._itemindexes.append(self.data[i].size()[0])
             metadata = {}
             for key in im.GetMetaDataKeys():
                 try:
@@ -207,7 +212,17 @@ class ImageDataSet(Dataset):
                 except:
                     metadata[key] = im.GetMetaData(key)
             self.metadata.append(metadata)
+
+        self._itemindexes = np.cumsum(self._itemindexes)
         self.length = np.sum([m.size()[0] for m in self.data])
+
+    def ReadRAMRIS(self, csvdata):
+        df = pd.read_csv(csvdata)
+
+        ramrisinfo = pd.DataFrame(columns=df.keys())
+        row_indexes = []
+
+        pass
 
     def size(self, int):
         return self.length

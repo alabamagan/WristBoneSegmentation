@@ -37,7 +37,6 @@ class ImageDataSet2D(Dataset):
           Load all .png, .jpg images to cache
         :return:
         """
-
         filenames = os.listdir(self.rootdir)
         filenames.sort()
         [self.dataSourcePath.extend(fnmatch.filter(filenames, "*" + ext)) for ext in ['.png','.jpg']]

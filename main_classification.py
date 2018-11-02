@@ -122,7 +122,50 @@ def main(a):
 
     # Evaluation mode
     else:
-       pass
+        inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True)
+        inputDataset.LoadWithCatagories(a.catagoriesIndex)
+        loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False, num_workers=4)
+
+        net = Inception3(num_classes=3, aux_logits=False)
+        net.train(False)
+
+        if a.usecuda:
+            net = net.cuda()
+
+        try:
+            LogPrint("Loading checkpoint " + a.checkpoint)
+            net.load_state_dict(torch.load(a.checkpoint))
+        except:
+            LogPrint("Cannot load state dict, terminate,")
+
+        gt = []
+        result = []
+        for index, samples in enumerate(tqdm(loader)):
+            if a.usecuda:
+                s = Variable(samples[0], volatile=True).cuda()
+            else:
+                s = Variable(samples[0], volatile=True)
+
+            gt.extend(samples[1].tolist())
+            # out = F.log_softmax(net.forward(s.unsqueeze(1)))
+            out = net.forward(s.float().unsqueeze(1))
+            v, d = torch.max(out, 1)
+            result.extend(d.data.tolist())
+            del s, v, d
+
+        result = np.array(result).astype('int')
+        real = np.array(gt).astype('int')
+        print np.sum(result == real) / float(len(result))
+        print "0->0", np.sum(np.multiply(result == 0, real == 0))
+        print "1->1", np.sum(np.multiply(result == 1, real == 1))
+        print "2->2", np.sum(np.multiply(result == 2, real == 2))
+        print "2->1", np.sum(np.multiply(result == 1, real == 2))
+        print "2->0", np.sum(np.multiply(result == 0, real == 2))
+        print "1->2", np.sum(np.multiply(result == 2, real == 1))
+        print "1->0", np.sum(np.multiply(result == 0, real == 1))
+        print "0->1", np.sum(np.multiply(result == 1, real == 0))
+        print "0->2", np.sum(np.multiply(result == 2, real == 0))
+        pass
     pass
 
 if __name__ == '__main__':
