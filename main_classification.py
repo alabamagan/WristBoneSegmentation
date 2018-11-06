@@ -10,7 +10,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch
-import visualization
 from Networks import Inception3
 from tensorboardX import SummaryWriter
 import datetime
@@ -21,13 +20,6 @@ from tqdm import tqdm
 def LogPrint(msg, level=20):
     logging.getLogger(__name__).log(level, msg)
     print msg
-
-def visualizeResults(input, out, gt, env='Wraist'):
-    val, index = torch.max(out, 1)
-    visualization.Visualize2D(input.data.cpu(), env=env, prefix='Input', nrow=1)
-    visualization.Visualize2D(gt.data.cpu(), env=env, prefix='GT', displayrange=[0, 2], nrow=1)
-    visualization.Visualize2D(index.squeeze().data.cpu(), env=env, prefix="OUTPUT", displayrange=[0, 2], nrow=1)
-    pass
 
 def main(a):
     ##############################
@@ -84,7 +76,7 @@ def main(a):
         losses = []
         for i in xrange(a.epoch):
             E = []
-            for index, samples in enumerate(tqdm(loader)):
+            for index, samples in enumerate(loader):
                 if a.usecuda:
                     s = Variable(samples[0]).cuda()
                     g = Variable(samples[1]).cuda()
@@ -122,8 +114,9 @@ def main(a):
 
     # Evaluation mode
     else:
-        inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True)
-        inputDataset.LoadWithCatagories(a.catagoriesIndex)
+        import category_parser as cp
+
+        inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True, loadBySlices=0)
         loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False, num_workers=4)
 
         net = Inception3(num_classes=3, aux_logits=False)
@@ -138,34 +131,41 @@ def main(a):
         except:
             LogPrint("Cannot load state dict, terminate,")
 
-        gt = []
         result = []
         for index, samples in enumerate(tqdm(loader)):
             if a.usecuda:
-                s = Variable(samples[0], volatile=True).cuda()
+                s = Variable(samples).cuda()
             else:
-                s = Variable(samples[0], volatile=True)
-
-            gt.extend(samples[1].tolist())
+                s = Variable(samples)
+            torch.no_grad()
             # out = F.log_softmax(net.forward(s.unsqueeze(1)))
             out = net.forward(s.float().unsqueeze(1))
             v, d = torch.max(out, 1)
-            result.extend(d.data.tolist())
+            result.extend(d.data.cpu().tolist())
             del s, v, d
 
         result = np.array(result).astype('int')
-        real = np.array(gt).astype('int')
-        print np.sum(result == real) / float(len(result))
-        print "0->0", np.sum(np.multiply(result == 0, real == 0))
-        print "1->1", np.sum(np.multiply(result == 1, real == 1))
-        print "2->2", np.sum(np.multiply(result == 2, real == 2))
-        print "2->1", np.sum(np.multiply(result == 1, real == 2))
-        print "2->0", np.sum(np.multiply(result == 0, real == 2))
-        print "1->2", np.sum(np.multiply(result == 2, real == 1))
-        print "1->0", np.sum(np.multiply(result == 0, real == 1))
-        print "0->1", np.sum(np.multiply(result == 1, real == 0))
-        print "0->2", np.sum(np.multiply(result == 2, real == 0))
-        pass
+        # Write result to csv
+        if os.path.isdir(a.output):
+            outputname = a.output + '/result.csv'
+        else:
+            outputname = a.output
+
+        with open(outputname, 'w') as outfile:
+            outfile.write('Name,NoLabel,Others,Hexagon\n')
+            cursor = 0
+            for i in xrange(len(inputDataset.dataSourcePath)):
+                numOfSlices = int(inputDataset.metadata[i]['dim[3]'])
+                r = list(result[cursor:cursor + numOfSlices])
+                cp.check_category(r)
+                s = cp.category2string(r)
+                while s.count(',') < 2:
+                    s += ','
+                cursor += numOfSlices
+                outfile.write('%s,'%os.path.basename(inputDataset.dataSourcePath[i]) + s + '\n')
+            outfile.close()
+
+
     pass
 
 if __name__ == '__main__':

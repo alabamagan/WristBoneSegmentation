@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-from torch import from_numpy, cat as concat
+from torch import from_numpy, cat
 import fnmatch
 import os
 import numpy as np
@@ -60,13 +60,14 @@ class ImageDataSet(Dataset):
     This dataset automatically load all the nii files in the specific directory to
     generate a 3D dataset
     """
-    def __init__(self, rootdir, verbose=False, dtype=float):
+    def __init__(self, rootdir, filelist=None, filesuffix=None, loadBySlices=-1, verbose=False, dtype=float, debugmode=False):
         """
 
         :param rootdir:
         """
         super(Dataset, self)
         assert os.path.isdir(rootdir), "Cannot access directory!"
+        assert loadBySlices <= 2, "This class only handle 3D data!"
         self.rootdir = rootdir
         self.dataSourcePath = []
         self.data = []
@@ -74,9 +75,12 @@ class ImageDataSet(Dataset):
         self.length = 0
         self.verbose = verbose
         self.dtype = dtype
+        self.filelist = filelist
+        self.filesuffix = filesuffix
+        self._debug=debugmode
+        self._byslices=loadBySlices
         self.useCatagory = False
         self.loadCatagory = False
-        self.catagory = None
         self._ParseRootDir()
 
 
@@ -98,7 +102,7 @@ class ImageDataSet(Dataset):
             out = []
             for pairs in s:
                 if pairs.find('-') > -1:
-                    out.extend(range(int(pairs.split('-')[0]), int(pairs.split('-')[1])+1))
+                    out.extend(range(int(pairs.split('-')[0]), int(pairs.split('-')[1]) + 1))
                 else:
                     out.append(int(pairs))
             return out
@@ -118,7 +122,7 @@ class ImageDataSet(Dataset):
             temp.extend(catlist)
         temp = np.array(temp).flatten()
 
-        data = concat(self.data, dim=0).numpy()
+        data = cat(self.data, dim=0).numpy()
         self.data = np.concatenate([self.ResizeToSquare(data[i], 299)[None,:] for i in xrange(data.shape[0])])
         self.data = from_numpy(self.data)
 
@@ -140,14 +144,22 @@ class ImageDataSet(Dataset):
 
 
         def parse_category_string(str):
-            s = str.split('_')
-            out = []
-            for pairs in s:
-                if pairs.find('-') > -1:
-                    out.extend(range(int(pairs.split('-')[0]), int(pairs.split('-')[1])+1))
-                else:
-                    out.append(int(pairs))
-            return out
+            if str == 'NULL':
+                return []
+            try:
+                s = str.split('_')
+                out = []
+                for pairs in s:
+                    if pairs.find('-') > -1:
+                        out.extend(range(int(pairs.split('-')[0]), int(pairs.split('-')[1])+1))
+                    else:
+                        try:
+                            out.append(int(pairs))
+                        except:
+                            pass
+                return out
+            except:
+                return []
 
         self.useCatagory = True
         self.catagory = {}
@@ -155,18 +167,17 @@ class ImageDataSet(Dataset):
         cat = pd.read_csv(txtdir)
         for i, row in cat.iterrows():
             self.catagory[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in xrange(1,4)]
-
-        availablelist = [int(os.path.basename(d).split('_')[0]) for d in self.dataSourcePath]
+        availablelist = self.catagory.keys()
+        availablelist.sort()
         temp = []
         for k,x in enumerate(availablelist):
-            for i in xrange(3):
+            for i in xrange(len(self.catagory[x])):
                 for j in self.catagory[x][i]:
                     temp.append([k,i + 1,j])
 
         self._itemindexes = np.array(temp) # [image index, catagory, slice number of]
 
         if catagory != 0:
-            assert catagory <= self._itemindexes[:,1].max(), "Selected catagory doesn't seemed to exist."
             self._itemindexes = self._itemindexes[self._itemindexes[:,1] == catagory]
             self.length = len(self._itemindexes)
 
@@ -184,8 +195,21 @@ class ImageDataSet(Dataset):
 
         if self.verbose:
             print "Parsing root path: ", self.rootdir
-        filenames = os.listdir(self.rootdir)
-        filenames = fnmatch.filter(filenames, "*.nii.gz")
+
+        # Load files written in filelist from the root_dir
+        if self.filelist is None:
+            filenames = os.listdir(self.rootdir)
+            filenames = fnmatch.filter(filenames, "*.nii.gz")
+        else:
+            filelist = open(self.filelist, 'r')
+            filenames = [fs.rstrip() for fs in filelist.readlines()]
+            for fs in filenames:
+                if not os.path.isfile(self.rootdir + '/' + fs):
+                    filenames.remove(fs)
+                    print "Cannot find " + fs + " in " + self.rootdir
+
+        if not self.filesuffix is None:
+            filenames = fnmatch.filter(filenames, "*" + self.filesuffix + "*")
         filenames.sort()
 
 
@@ -195,26 +219,39 @@ class ImageDataSet(Dataset):
             print "Start Loading"
 
         self._itemindexes = [0] # [image index of start slice]
-        for i, f in enumerate(tqdm(filenames, disable=not self.verbose)):
+        for i, f in enumerate(tqdm(filenames, disable=not self.verbose)) \
+                if not self._debug else enumerate(tqdm(filenames[:3], disable=not self.verbose)):
             if self.verbose:
                 tqdm.write("Reading from "+f)
             im = sitk.ReadImage(self.rootdir + "/" + f)
             self.dataSourcePath.append(self.rootdir + "/" + f)
-            self.data.append(from_numpy(np.array(sitk.GetArrayFromImage(im), dtype=self.dtype)))
+            imarr = sitk.GetArrayFromImage(im).astype(self.dtype)
+            imarr[imarr <= -1000] = -1000
+            self.data.append(from_numpy(imarr))
             self._itemindexes.append(self.data[i].size()[0])
             metadata = {}
             for key in im.GetMetaDataKeys():
                 try:
                     if key.split('['):
                         key_type = key.split('[')[0]
-                    t = NIFTI_DICT[key_type]
+
+                    try:
+                        t = NIFTI_DICT[key_type]
+                    except:
+                        continue
                     metadata[key] = t(im.GetMetaData(key))
                 except:
                     metadata[key] = im.GetMetaData(key)
             self.metadata.append(metadata)
 
-        self._itemindexes = np.cumsum(self._itemindexes)
-        self.length = np.sum([m.size()[0] for m in self.data])
+        if self._byslices >= 0:
+            try:
+                self._itemindexes = np.cumsum(self._itemindexes)
+                self.length = np.sum([m.size()[self._byslices] for m in self.data])
+                self.data = cat(self.data, dim=self._byslices)
+            except IndexError:
+                print "Wrong Index is used!"
+                self.length = len(self.dataSourcePath)
 
     def ReadRAMRIS(self, csvdata):
         df = pd.read_csv(csvdata)
@@ -237,19 +274,20 @@ class ImageDataSet(Dataset):
         elif self.loadCatagory:
             return self.data[item], self._catagories[item]
         else:
-            return concat(self.data, 0)[item]
+            return self.data[item]
 
     def __str__(self):
         from pandas import DataFrame as df
         s = "==========================================================================================\n" \
             "Root Path: %s \n" \
             "Number of loaded images: %i\n" \
+            "Load By Slice: %i \n" \
             "Image Details:\n" \
-            "--------------\n"%(self.rootdir, self.length)
+            "--------------\n"%(self.rootdir, self.length, self._byslices)
         # "File Paths\tSize\t\tSpacing\t\tOrigin\n"
         # printable = {'File Name': []}
         printable = {'File Name': [], 'Size': [], 'Spacing': [], 'Origin': []}
-        for i in xrange(len(self.data)):
+        for i in xrange(len(self.dataSourcePath)):
             printable['File Name'].append(os.path.basename(self.dataSourcePath[i]))
             # for keys in self.metadata[i]:
             #     if not printable.has_key(keys):
@@ -266,7 +304,7 @@ class ImageDataSet(Dataset):
                                         round(self.metadata[i]['qoffset_y'], 2),
                                         round(self.metadata[i]['qoffset_z'], 2)])
         data = df(data=printable)
-        s += data.to_string() + "\n"
+        s += data.to_string()
         return s
 
     @staticmethod
@@ -304,6 +342,7 @@ class ImageDataSet(Dataset):
     def ResizeToSquare(im, s):
         # Get data
         return resize(im, [s, s], preserve_range=True, mode='constant')
+
 
 class MaskedTensorDataset(Dataset):
     """

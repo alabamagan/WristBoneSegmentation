@@ -11,7 +11,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch
-import visualization
 from Networks import UNet
 from tqdm import tqdm
 import datetime
@@ -23,13 +22,6 @@ from tensorboardX import SummaryWriter
 def LogPrint(msg, level=20):
     logging.getLogger(__name__).log(level, msg)
     print msg
-
-def visualizeResults(input, out, gt, env='Wraist'):
-    val, index = torch.max(out, 1)
-    visualization.Visualize2D(input.data.cpu(), env=env, prefix='Input', nrow=1)
-    visualization.Visualize2D(gt.data.cpu(), env=env, prefix='GT', displayrange=[0, 2], nrow=1)
-    visualization.Visualize2D(index.squeeze().data.cpu(), env=env, prefix="OUTPUT", displayrange=[0, 2], nrow=1)
-    pass
 
 def main(a):
     ##############################
@@ -145,6 +137,7 @@ def main(a):
         import SimpleITK as sitk
 
         inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True)
+        print inputDataset
         net = UNet(2, in_channels=1, depth=5, start_filts=64, up_mode='upsample')
 
         indexes = []
@@ -170,9 +163,11 @@ def main(a):
 
                 results = []
                 for i, samples in enumerate(loader):
-                    s = Variable(samples, volatile=True)
+                    s = Variable(samples)
                     if a.usecuda:
                         s = s.cuda()
+
+                    torch.no_grad()
                     out = net.forward(s.unsqueeze(1)).squeeze() if a.stage == 1 else net.forward(s.permute(0, 3, 1, 2)[:,:2].float())
                     out = F.log_softmax(out, dim=1)
                     if out.data.dim() == 3:
@@ -203,6 +198,10 @@ def main(a):
                     seg[l[2]-1] = t[j]
 
                 im = ImageDataSet.WrapImageWithMetaData(seg, inputDataset.metadata[i])
+                # print im.GetSize()
+                im = sitk.BinaryFillhole(im)
+                im = sitk.BinaryMedian(im, [3, 3, 0])
+                # im = sitk.BinaryMorphologicalClosing(im, [1, 1, 0])
                 sitk.WriteImage(im, a.output + "/" + os.path.basename(inputDataset.dataSourcePath[i]))
         else:
             LogPrint("Loading parameters " + a.checkpoint)
@@ -290,6 +289,6 @@ if __name__ == '__main__':
         else:
             a.log = "./Backup/Log/eval_%03d.log"%(a.epoch)
 
-    logging.basicConfig(format="[%(asctime)-12s - %(levelname)s] %(message)s", filename=a.log)
+    logging.basicConfig(format="[%(asctime)-12s - %(levelname)s] %(message)s", filename=a.log, level=logging.DEBUG)
 
     main(a)
