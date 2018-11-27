@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-from torch import from_numpy, cat
+from torch import from_numpy, cat as concat
 import fnmatch
 import os
 import numpy as np
@@ -60,7 +60,8 @@ class ImageDataSet(Dataset):
     This dataset automatically load all the nii files in the specific directory to
     generate a 3D dataset
     """
-    def __init__(self, rootdir, filelist=None, filesuffix=None, loadBySlices=-1, verbose=False, dtype=float, debugmode=False):
+    def __init__(self, rootdir, filelist=None, filesuffix=None, loadBySlices=-1, verbose=False, dtype=float, debugmode=False,
+                 resize=False):
         """
 
         :param rootdir:
@@ -81,6 +82,7 @@ class ImageDataSet(Dataset):
         self._byslices=loadBySlices
         self.useCatagory = False
         self.loadCatagory = False
+        self.resize = resize
         self._ParseRootDir()
 
 
@@ -122,7 +124,8 @@ class ImageDataSet(Dataset):
             temp.extend(catlist)
         temp = np.array(temp).flatten()
 
-        data = cat(self.data, dim=0).numpy()
+        # print self.data.shape
+        data = concat(self.data, dim=0).numpy()
         self.data = np.concatenate([self.ResizeToSquare(data[i], 299)[None,:] for i in xrange(data.shape[0])])
         self.data = from_numpy(self.data)
 
@@ -248,10 +251,20 @@ class ImageDataSet(Dataset):
             try:
                 self._itemindexes = np.cumsum(self._itemindexes)
                 self.length = np.sum([m.size()[self._byslices] for m in self.data])
-                self.data = cat(self.data, dim=self._byslices)
+                self.data = concat(self.data, dim=self._byslices)
             except IndexError:
                 print "Wrong Index is used!"
                 self.length = len(self.dataSourcePath)
+
+        if self.resize:
+            self.ResizeDataToSquare()
+
+    def ResizeDataToSquare(self):
+        newdata = []
+        print self.data.size()
+        for i, data in enumerate(self.data):
+            newdata.append(from_numpy(self.ResizeToSquare(self.data[i].numpy(), 299)).unsqueeze(0))
+        self.data = concat(newdata, dim=0)
 
     def ReadRAMRIS(self, csvdata):
         df = pd.read_csv(csvdata)

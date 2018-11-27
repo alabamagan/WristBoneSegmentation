@@ -241,7 +241,7 @@ class UNet(nn.Module):
         # nn.CrossEntropyLoss is your training script,
         # as this module includes a softmax already.
         x = self.conv_final(x)
-        return x
+        return x, encoder_outs
 
 if __name__ == "__main__":
     """

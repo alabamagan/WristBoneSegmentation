@@ -1,12 +1,23 @@
+import os
+import pandas as pd
+
 def parse_category_string(str):
-    s = str.split('_')
-    out = []
-    for pairs in s:
-        if pairs.find('-') > -1:
-            out.extend(range(int(pairs.split('-')[0])-1, int(pairs.split('-')[1])))
-        else:
-            out.append(int(pairs) - 1)
-    return out
+    if str == 'NULL':
+        return []
+    try:
+        s = str.split('_')
+        out = []
+        for pairs in s:
+            if pairs.find('-') > -1:
+                out.extend(range(int(pairs.split('-')[0]), int(pairs.split('-')[1])+1))
+            else:
+                try:
+                    out.append(int(pairs))
+                except:
+                    pass
+        return out
+    except:
+        return []
 
 def string2category(str):
     temp = []
@@ -89,5 +100,24 @@ def check_category(catlist):
             # remaining zeros
             pass
 
+def cat_list2slice_stack(catlist):
+    total_elements = sum([len(l) for l in catlist])
+    largest_elements = max([l for L in catlist for l in L])
+    assert total_elements == largest_elements, str(catlist)
+
+    stack = [-1 for i in xrange(total_elements)]
+    for cat, l in enumerate(catlist):
+        for e in l:
+            stack[e-1] = cat
+    return stack
+
+def categroy_file_reader(filedir):
+    assert os.path.isfile(filedir)
+
+    categories = {}
+    cat = pd.read_csv(filedir)
+    for i, row in cat.iterrows():
+            categories[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in xrange(1,4)]
+    return categories
 
 

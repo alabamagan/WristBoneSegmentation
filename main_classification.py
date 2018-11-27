@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch
-from Networks import Inception3
+from Networks import *
 from tensorboardX import SummaryWriter
 import datetime
 from tqdm import tqdm
@@ -44,7 +44,7 @@ def main(a):
         writer = SummaryWriter("/media/storage/PytorchRuns/Wraist_"+datetime.datetime.now().strftime("%Y%m%d_%H%M"))
         # Load Checkpoint or create new network
         #-----------------------------------------
-        net = Inception3(num_classes=3, aux_logits=False)
+        net = inception_v3(pretrained=False, num_classes=3, aux_logits=False)
         net.train(True)
         if os.path.isfile(a.checkpoint) :
             LogPrint("Loading checkpoint " + a.checkpoint)
@@ -116,7 +116,7 @@ def main(a):
     else:
         import category_parser as cp
 
-        inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True, loadBySlices=0)
+        inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True, loadBySlices=0, resize=True)
         loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=False, num_workers=4)
 
         net = Inception3(num_classes=3, aux_logits=False)
@@ -134,15 +134,15 @@ def main(a):
         result = []
         for index, samples in enumerate(tqdm(loader)):
             if a.usecuda:
-                s = Variable(samples).cuda()
+                s = Variable(samples, requires_grad=False).cuda()
             else:
-                s = Variable(samples)
+                s = Variable(samples, requires_grad=False)
             torch.no_grad()
             # out = F.log_softmax(net.forward(s.unsqueeze(1)))
             out = net.forward(s.float().unsqueeze(1))
             v, d = torch.max(out, 1)
             result.extend(d.data.cpu().tolist())
-            del s, v, d
+            del s, v, d, out
 
         result = np.array(result).astype('int')
         # Write result to csv
@@ -201,8 +201,7 @@ if __name__ == '__main__':
                         help="Path to a file with dictionary of training parameters written inside")
     parser.add_argument("--log", dest='log', action='store', type=str, default=None,
                         help="If specified, all the messages will be written to the specified file.")
-    parser.add_argument("--stage", dest='stage', default=1, action='store', type=int,
-                        help="Stage 1: Feature location, Stage2: TOCI classification")
+
     a = parser.parse_args()
 
     if a.log is None:
