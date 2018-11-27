@@ -198,8 +198,12 @@ def main(a):
                     seg[l[2]-1] = t[j]
 
                 im = ImageDataSet.WrapImageWithMetaData(seg, inputDataset.metadata[i])
-                # print im.GetSize()
-                im = sitk.BinaryFillhole(im)
+                im = sitk.RelabelComponent(sitk.ConnectedComponent(im),
+                                           int(15. / np.prod(np.array(im.GetSpacing())))
+                                           )
+                tempim = sitk.JoinSeries([sitk.BinaryFillhole(im[:,:,k]) for k in xrange(im.GetSize()[-1])])
+                tempim.CopyInformation(im)
+                im = sitk.BinaryFillhole(tempim)
                 im = sitk.BinaryMedian(im, [3, 3, 0])
                 # im = sitk.BinaryMorphologicalClosing(im, [1, 1, 0])
                 sitk.WriteImage(im, a.output + "/" + os.path.basename(inputDataset.dataSourcePath[i]))
