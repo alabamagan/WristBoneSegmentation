@@ -111,7 +111,7 @@ def cat_list2slice_stack(catlist):
             stack[e-1] = cat
     return stack
 
-def categroy_file_reader(filedir):
+def category_file_reader(filedir):
     assert os.path.isfile(filedir)
 
     categories = {}

@@ -8,6 +8,7 @@ from imgaug import augmenters as iaa
 import pandas as pd
 from skimage.transform import resize
 from tqdm import tqdm
+from category_parser import *
 
 NIFTI_DICT = {
     "sizeof_hdr": int,
@@ -86,7 +87,7 @@ class ImageDataSet(Dataset):
         self._ParseRootDir()
 
 
-    def LoadWithCatagories(self, txtdir):
+    def LoadWithCatagories(self, txtdir, resize=False):
         """
         Writter for inception
 
@@ -109,25 +110,28 @@ class ImageDataSet(Dataset):
                     out.append(int(pairs))
             return out
 
-        self.catagory = {}
-        cat = pd.read_csv(txtdir)
-        for i, row in cat.iterrows():
-            self.catagory[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in xrange(1,4)]
+        # self.catagory = {}
+        # cat = pd.read_csv(txtdir)
+        # for i, row in cat.iterrows():
+        #     self.catagory[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in xrange(1,4)]
 
-        availablelist = [int(os.path.basename(d).split('_')[0]) for d in self.dataSourcePath]
+        self.catagory = category_file_reader(txtdir)
+
+        # availablelist = [int(os.path.basename(d).split('_')[0]) for d in self.dataSourcePath]
         temp = []
-        for k,x in enumerate(availablelist):
-            catlist = np.zeros(self.data[k].size(0))
-            for i in xrange(3):
-                for j in self.catagory[x][i]:
-                    catlist[j - 1] = i
+        keys = self.catagory.keys()
+        keys.sort()
+        for k,x in enumerate(keys):
+            catlist = cat_list2slice_stack(self.catagory[x])
             temp.extend(catlist)
         temp = np.array(temp).flatten()
 
         # print self.data.shape
-        data = concat(self.data, dim=0).numpy()
-        self.data = np.concatenate([self.ResizeToSquare(data[i], 299)[None,:] for i in xrange(data.shape[0])])
-        self.data = from_numpy(self.data)
+        if resize:
+            self.ResizeDataToSquare()
+        # data = concat(self.data, dim=0).numpy()
+        # self.data = np.concatenate([self.ResizeToSquare(data[i], 299)[None,:] for i in xrange(data.shape[0])])
+        # self.data = from_numpy(self.data)
 
         self._catagories = from_numpy(temp)
         self.length = self.data.size(0)
