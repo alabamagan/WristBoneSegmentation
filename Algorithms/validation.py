@@ -14,10 +14,10 @@ def perf_measure(y_actual, y_guess):
     y = y_actual.flatten()
     x = y_guess.flatten()
 
-    TP = np.sum(np.multiply(y == True, x == True))
-    TN = np.sum(np.multiply(y == False, x == False))
-    FP = np.sum(np.multiply(y == False, x == True))
-    FN = np.sum(np.multiply(y == True, x == False))
+    TP = np.sum((y == True) & (x == True))
+    TN = np.sum((y == False) & (x == False))
+    FP = np.sum((y == False) & (x == True))
+    FN = np.sum((y == True) & (x == False))
     return TP, FP, TN, FN
 
 def JAC(actual, guess):
@@ -27,8 +27,12 @@ def JAC(actual, guess):
 def GCE(actual, guess):
     TP, FP, TN, FN = np.array(perf_measure(actual, guess), dtype=float)
     n = float(np.sum(TP + FP + TN + FN))
-    return np.min([FN * (FN + 2*TP) / (TP + FN) + FP * (FP + 2*TN)/(TN+FP),
+
+    val = np.min([FN * (FN + 2*TP) / (TP + FN) + FP * (FP + 2*TN)/(TN+FP),
                 FP * (FP + 2*TP) / (TP + FP) + FN * (FN + 2*TN)/(TN+FN)]) / n
+    # if np.sum(actual) == 0 or  np.sum(guess) == 0:
+    #     print TP, FP, TN, FN, np.sum(actual) == 0, np.sum(guess) == 0
+    return val
 
 def DICE(actual, guess):
     TP, FP, TN, FN = np.array(perf_measure(actual, guess), dtype=float)
@@ -49,49 +53,64 @@ def EVAL(seg, gt):
         cat = s[1]
         ss = s[0].numpy().flatten()
         gg = g[0].numpy().flatten()
-        if np.sum(gg) == 0 or np.sum(ss) == 0:
-            continue
-        d = DICE(ss, gg)
-        jac = JAC(ss, gg)
-        gce = GCE(ss, gg)
-        vs = VS(ss, gg)
+        # if np.sum(gg) == 0 and np.sum(ss) == 0:
+        #     if np.sum(ss) == 0 and int(cat.data.numpy()) != 0:
+        #         imindex = np.argmax(seg._itemindexes > i)
+        #         fname = os.path.basename(seg.dataSourcePath[imindex - 1])
+        #         print i, ' from ' + fname + ' slice=' + str(i) + ' has some problem'
+        #     continue
+        d = DICE(gg, ss)
+        jac = JAC(gg, ss)
+        gce = GCE(gg, ss)
+        vs = VS(gg, ss)
         imindex = np.argmax(seg._itemindexes > i)
-        data = pd.DataFrame([[os.path.basename(seg.dataSourcePath[imindex - 1]), imindex, i, gce, jac, d, 1-vs, cat]],
+        data = pd.DataFrame([[os.path.basename(seg.dataSourcePath[imindex - 1]), imindex, i, gce, jac, d, 1-vs, int(cat.data.numpy())]],
                             columns=['filename','ImageIndex','SLICE', 'GCE', 'JAC', 'DICE', 'VD','Catagory'])
         df = df.append(data)
     return df
 
 
 if __name__ == '__main__':
-    seg = ImageDataSet("../ERA_Segmentation/03_TEST/postprocessed/", dtype=np.uint8, verbose=True)
+    seg = ImageDataSet("../ERA_Segmentation/03_TEST/true_postprocessed/", dtype=np.uint8, verbose=True)
     seg_nocat = ImageDataSet("../ERA_Segmentation/03_TEST/postprocessed_nocat/", dtype=np.uint8, verbose=True)
     gt = ImageDataSet("../ERA_Segmentation/03_TEST/gt", dtype=np.uint8, verbose=True)
-    seg.LoadWithCatagories("../ERA_Segmentation/CaseSegment.txt")
-    seg_nocat.LoadWithCatagories("../ERA_Segmentation/CaseSegment.txt")
-    gt.LoadWithCatagories("../ERA_Segmentation/CaseSegment.txt")
+
+    by_casedd = pd.DataFrame(columns=['filename', 'UseCategory','GCE', 'JAC', 'DICE', 'VD'])
+    # np.set_printoptions(5, linewidth=200)
+    # bycase = {'nocat':[], 'cat':[]}
+    for i, row in enumerate(zip(seg, seg_nocat, gt)):
+        funcs = [GCE, JAC, DICE, lambda seg, tar: 1-VS(seg, tar)]
+        l_df = pd.DataFrame([[os.path.basename(seg.dataSourcePath[i]), 1] + [f(row[2].numpy(), row[0].numpy()) for f in funcs],
+                             [os.path.basename(seg.dataSourcePath[i]), 0] + [f(row[2].numpy(), row[1].numpy()) for f in funcs],
+                             ], columns=['filename', 'UseCategory', 'GCE', 'JAC', 'DICE', 'VD'], index=[i, i])
+        by_casedd = by_casedd.append(l_df)
+    by_casedd = by_casedd.sort_values('UseCategory')
+    #
+    seg = ImageDataSet("../ERA_Segmentation/03_TEST/true_postprocessed/", dtype=np.uint8, verbose=True, loadBySlices=0)
+    seg_nocat = ImageDataSet("../ERA_Segmentation/03_TEST/postprocessed_nocat/", dtype=np.uint8, verbose=True, loadBySlices=0)
+    gt = ImageDataSet("../ERA_Segmentation/03_TEST/gt", dtype=np.uint8, verbose=True, loadBySlices=0)
+    # # seg.LoadWithCatagories("../ERA_Segmentation/03_TEST/CaseSegment_Test.txt")
+    # # seg_nocat.LoadWithCatagories("../ERA_Segmentation/03_TEST/CaseSegment_Test.txt")
+    gt.LoadWithCatagories("../ERA_Segmentation/03_TEST/CaseSegment_Test.txt")
+    seg.LoadWithCatagories("../ERA_Segmentation/03_TEST/output.csv")
+    seg_nocat.LoadWithCatagories("../ERA_Segmentation/03_TEST/output.csv")
+    # gt.LoadWithCatagories("../ERA_Segmentation/03_TEST/output.csv")
+
 
     ramris = pd.read_csv("../ERA_Segmentation/03_TEST/list.csv")
 
     dd = EVAL(seg, gt)
     dd_nocat = EVAL(seg_nocat, gt)
-    dd['UseCatagory'] = 1
-    dd_nocat['UseCatagory'] = 0
+    dd['UseCategory'] = 1
+    dd_nocat['UseCategory'] = 0
     dd_nocat['Catagory'] = 0
     dd = pd.merge(ramris,dd)
     dd_nocat = pd.merge(ramris,dd_nocat)
+    by_casedd = pd.merge(ramris, by_casedd)
     final = dd.append(dd_nocat)
-    final.to_csv("../ERA_Segmentation/03_TEST/results.csv")
+    final.to_csv("../ERA_Segmentation/03_TEST/true_results.csv")
+    by_casedd.to_csv("../ERA_Segmentation/03_TEST/true_results_bycase.csv")
     print final.to_string()
     print final['DICE'][final['Catagory']==2].mean()
 
-    # dd.to_csv("../ERA_Segmentation/validation.csv")
-    # print perf_measure(seg[10].numpy().flatten(), gt[10].numpy().flatten())
-    # print D(seg[10].numpy().flatten(), gt[10].numpy().flatten())
-    # print 1-dice(seg[10].numpy().flatten(), gt[10].numpy().flatten())
 
-    # target = np.array([1, 1, 0, 0])
-    # guess = np.array([0, 1, 0, 0])
-    #
-    # print perf_measure(target, guess)
-    # print 1 - dice(target, guess)
-    # print D(target, guess)

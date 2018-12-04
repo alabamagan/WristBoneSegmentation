@@ -28,8 +28,8 @@ def classification_accuracy(target, input):
 
 
 if __name__ == '__main__':
-    tar = categroy_file_reader('/home/lwong/Source/Repos/WraistBoneSegmentation/ERA_Segmentation/03_TEST/CaseSegment_Test.txt')
-    res = categroy_file_reader('/home/lwong/Source/Repos/WraistBoneSegmentation/ERA_Segmentation/03_TEST/output.csv')
+    tar = category_file_reader('/home/lwong/Source/Repos/WraistBoneSegmentation/ERA_Segmentation/03_TEST/CaseSegment_Test.txt')
+    res = category_file_reader('/home/lwong/Source/Repos/WraistBoneSegmentation/ERA_Segmentation/03_TEST/output.csv')
     # res = categroy_file_reader('/home/lwong/Source/Repos/WraistBoneSegmentation/ERA_Segmentation/output/results_new.csv')
     # tar = categroy_file_reader('/home/lwong/Source/Repos/WraistBoneSegmentation/ERA_Segmentation/output/new_output.csv')
 
