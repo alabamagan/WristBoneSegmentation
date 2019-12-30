@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 def LogPrint(msg, level=20):
     logging.getLogger(__name__).log(level, msg)
-    print msg
+    print(msg)
 
 def main(a):
     ##############################
@@ -74,7 +74,7 @@ def main(a):
 
         lastloss = 1e32
         losses = []
-        for i in xrange(a.epoch):
+        for i in range(a.epoch):
             E = []
             for index, samples in enumerate(loader):
                 if a.usecuda:
@@ -154,7 +154,7 @@ def main(a):
         with open(outputname, 'w') as outfile:
             outfile.write('Name,NoLabel,Others,Hexagon\n')
             cursor = 0
-            for i in xrange(len(inputDataset.dataSourcePath)):
+            for i in range(len(inputDataset.dataSourcePath)):
                 numOfSlices = int(inputDataset.metadata[i]['dim[3]'])
                 r = list(result[cursor:cursor + numOfSlices])
                 cp.check_category(r)

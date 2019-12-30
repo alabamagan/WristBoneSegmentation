@@ -6,7 +6,6 @@ import numpy as np
 from MedImgDataset import ImageDataSet
 from torch.utils.data import DataLoader, TensorDataset, sampler
 from torch.autograd import Variable
-from torchvision.utils import make_grid
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -14,14 +13,13 @@ import torch
 from Networks import UNet
 from tqdm import tqdm
 import datetime
-from scipy.spatial.distance import dice
 
 from tensorboardX import SummaryWriter
 # import your own newtork
 
 def LogPrint(msg, level=20):
     logging.getLogger(__name__).log(level, msg)
-    print msg
+    print(msg)
 
 def main(a):
     ##############################
@@ -97,30 +95,10 @@ def main(a):
                 optimizer.step()
                 E.append(loss.data[0])
                 tqdm.write("\t[Step %04d] Loss: %.010f"%(index, loss.data[0]))
-                if a.plot:
-                    step = i * len(loader) + index
-                    vals, outimnumpy = torch.max(out, 1)
-                    gtim = make_grid(F.max_pool2d(g.unsqueeze(1).float(), 4).cpu().data, nrow=2, padding=1, normalize=True)
-                    vals, outim = torch.max(F.max_pool2d(out, 4), 1)
-                    outim = make_grid(outim.cpu().unsqueeze(1).float().data, nrow=2, padding=1, normalize=True)
-                    inputim = make_grid(F.avg_pool2d(s.unsqueeze(1), 4).cpu().data, nrow=2, padding=1, normalize=True)
-                    DICE = dice(outimnumpy.data.cpu().numpy().flatten().astype('bool'), g.data.cpu().numpy().flatten().astype('bool'))
-                    # writer.add_image('Wrist_Segment_Cat%s/GroundTruth'%a.useCatagory, gtim, step)
-                    # writer.add_image('Wrist_Segment_Cat%s/Output'%a.useCatagory, outim, step)
-                    # writer.add_image('Wrist_Segment_Cat%s/Input'%a.useCatagory, inputim, step)
-                    # writer.add_scalar('Wrist_Segment_Cat%s/Loss'%a.useCatagory, loss.data[0], step)
-                    # writer.add_scalar('Wrist_Segment_Cat%s/DICE'%a.useCatagory, 1-DICE, step)
-                    writer.add_image('Wrist_Segment_Cat0/GroundTruth', gtim, step)
-                    writer.add_image('Wrist_Segment_Cat0/Output', outim, step)
-                    writer.add_image('Wrist_Segment_Cat0/Input', inputim, step)
-                    writer.add_scalar('Wrist_Segment_Cat0/Loss', loss.data[0], step)
-                    writer.add_scalar('Wrist_Segment_Cat0/DICE', 1 - DICE, step)
-                    # visualizeResults(s, out, g, "Wraist_%02d"%a.useCatagory)
+
 
             losses.append(E)
             if np.array(E).mean() <= lastloss:
-                # backuppath = "./Backup/checkpoint_%s_Cat_%i.pt"%(a.checkpointSuffix ,a.useCatagory) if a.useCatagory != 0 else \
-                #     "./Backup/checkpoint_NoCat.pt"
                 backuppath = "./Backup/checkpoint_NoCat.pt"
                 torch.save(net.state_dict(), backuppath)
                 lastloss = np.array(E).mean()
@@ -137,7 +115,6 @@ def main(a):
         import SimpleITK as sitk
 
         inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True)
-        print inputDataset
         net = UNet(2, in_channels=1, depth=5, start_filts=64, up_mode='upsample')
 
         indexes = []
@@ -168,7 +145,7 @@ def main(a):
                         s = s.cuda()
 
                     torch.no_grad()
-                    out = net.forward(s.unsqueeze(1)).squeeze() if a.stage == 1 else net.forward(s.permute(0, 3, 1, 2)[:,:2].float())
+                    out = net.forward(s.unsqueeze(1))[0].squeeze() if a.stage == 1 else net.forward(s.permute(0, 3, 1, 2)[:,:2].float())
                     out = F.log_softmax(out, dim=1)
                     if out.data.dim() == 3:
                         val, seg = torch.max(out, 0)
@@ -185,7 +162,7 @@ def main(a):
             concat = np.concatenate(concat,0)
             indexes = np.concatenate(indexes,0)
 
-            for i in xrange(len(inputDataset.dataSourcePath)):
+            for i in range(len(inputDataset.dataSourcePath)):
                 LogPrint("Wroking on image: " + inputDataset.dataSourcePath[i])
                 dim = [inputDataset.metadata[i]['dim[1]'],
                        inputDataset.metadata[i]['dim[2]'],
@@ -198,14 +175,6 @@ def main(a):
                     seg[l[2]-1] = t[j]
 
                 im = ImageDataSet.WrapImageWithMetaData(seg, inputDataset.metadata[i])
-                im = sitk.RelabelComponent(sitk.ConnectedComponent(im),
-                                           int(15. / np.prod(np.array(im.GetSpacing())))
-                                           )
-                tempim = sitk.JoinSeries([sitk.BinaryFillhole(im[:,:,k]) for k in xrange(im.GetSize()[-1])])
-                tempim.CopyInformation(im)
-                im = sitk.BinaryFillhole(tempim)
-                im = sitk.BinaryMedian(im, [3, 3, 0])
-                # im = sitk.BinaryMorphologicalClosing(im, [1, 1, 0])
                 sitk.WriteImage(im, a.output + "/" + os.path.basename(inputDataset.dataSourcePath[i]))
         else:
             LogPrint("Loading parameters " + a.checkpoint)

@@ -110,11 +110,6 @@ class ImageDataSet(Dataset):
                     out.append(int(pairs))
             return out
 
-        # self.catagory = {}
-        # cat = pd.read_csv(txtdir)
-        # for i, row in cat.iterrows():
-        #     self.catagory[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in xrange(1,4)]
-
         self.catagory = category_file_reader(txtdir)
 
         # availablelist = [int(os.path.basename(d).split('_')[0]) for d in self.dataSourcePath]
@@ -173,12 +168,12 @@ class ImageDataSet(Dataset):
 
         cat = pd.read_csv(txtdir)
         for i, row in cat.iterrows():
-            self.catagory[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in xrange(1,4)]
+            self.catagory[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in range(1,4)]
         availablelist = self.catagory.keys()
         availablelist.sort()
         temp = []
         for k,x in enumerate(availablelist):
-            for i in xrange(len(self.catagory[x])):
+            for i in range(len(self.catagory[x])):
                 for j in self.catagory[x][i]:
                     temp.append([k,i + 1,j])
 
@@ -201,7 +196,7 @@ class ImageDataSet(Dataset):
         """
 
         if self.verbose:
-            print "Parsing root path: ", self.rootdir
+            print("Parsing root path: ", self.rootdir)
 
         # Load files written in filelist from the root_dir
         if self.filelist is None:
@@ -213,7 +208,7 @@ class ImageDataSet(Dataset):
             for fs in filenames:
                 if not os.path.isfile(self.rootdir + '/' + fs):
                     filenames.remove(fs)
-                    print "Cannot find " + fs + " in " + self.rootdir
+                    print("Cannot find " + fs + " in " + self.rootdir)
 
         if not self.filesuffix is None:
             filenames = fnmatch.filter(filenames, "*" + self.filesuffix + "*")
@@ -222,8 +217,8 @@ class ImageDataSet(Dataset):
 
         self.length = len(filenames)
         if self.verbose:
-            print "Found %s nii.gz files..."%self.length
-            print "Start Loading"
+            print("Found %s nii.gz files..."%self.length)
+            print("Start Loading")
 
         self._itemindexes = [0] # [image index of start slice]
         for i, f in enumerate(tqdm(filenames, disable=not self.verbose)) \
@@ -257,7 +252,7 @@ class ImageDataSet(Dataset):
                 self.length = np.sum([m.size()[self._byslices] for m in self.data])
                 self.data = concat(self.data, dim=self._byslices)
             except IndexError:
-                print "Wrong Index is used!"
+                print("Wrong Index is used!")
                 self.length = len(self.dataSourcePath)
 
         if self.resize:
@@ -265,7 +260,7 @@ class ImageDataSet(Dataset):
 
     def ResizeDataToSquare(self):
         newdata = []
-        print self.data.size()
+        print(self.data.size())
         for i, data in enumerate(self.data):
             newdata.append(from_numpy(self.ResizeToSquare(self.data[i].numpy(), 299)).unsqueeze(0))
         self.data = concat(newdata, dim=0)
@@ -304,7 +299,7 @@ class ImageDataSet(Dataset):
         # "File Paths\tSize\t\tSpacing\t\tOrigin\n"
         # printable = {'File Name': []}
         printable = {'File Name': [], 'Size': [], 'Spacing': [], 'Origin': []}
-        for i in xrange(len(self.dataSourcePath)):
+        for i in range(len(self.dataSourcePath)):
             printable['File Name'].append(os.path.basename(self.dataSourcePath[i]))
             # for keys in self.metadata[i]:
             #     if not printable.has_key(keys):
