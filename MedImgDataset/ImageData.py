@@ -114,7 +114,7 @@ class ImageDataSet(Dataset):
 
         # availablelist = [int(os.path.basename(d).split('_')[0]) for d in self.dataSourcePath]
         temp = []
-        keys = self.catagory.keys()
+        keys = list(self.catagory.keys())
         keys.sort()
         for k,x in enumerate(keys):
             catlist = cat_list2slice_stack(self.catagory[x])
@@ -169,7 +169,7 @@ class ImageDataSet(Dataset):
         cat = pd.read_csv(txtdir)
         for i, row in cat.iterrows():
             self.catagory[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in range(1,4)]
-        availablelist = self.catagory.keys()
+        availablelist = list(self.catagory.keys())
         availablelist.sort()
         temp = []
         for k,x in enumerate(availablelist):

@@ -8,11 +8,8 @@ from torch.utils.data import DataLoader
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 import torch
 from Networks import *
-from tensorboardX import SummaryWriter
-import datetime
 from tqdm import tqdm
 
 # import your own newtork
@@ -33,15 +30,13 @@ def main(a):
     ##############################
     # Training Mode
     if not mode:
-        assert os.path.isdir(a.train), "Ground truth directory cannot be opened!"
-        inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True)
-        inputDataset.LoadWithCatagories(a.catagoriesIndex)
+        inputDataset= ImageDataSet(a.input, dtype=np.float32, verbose=True, loadBySlices=0)
+        inputDataset.LoadWithCatagories(a.train)
         # gtDataset   = ImageDataSet(a.train, dtype=np.uint8, verbose=True)
         # trainingSet = TensorDataset(inputDataset, gtDataset)
         loader      = DataLoader(inputDataset, batch_size=a.batchsize, shuffle=True, num_workers=4, drop_last=True)
                                  # sampler=sampler.WeightedRandomSampler(np.ones(len(trainingSet)).tolist(), a.batchsize*100))
 
-        writer = SummaryWriter("/media/storage/PytorchRuns/Wraist_"+datetime.datetime.now().strftime("%Y%m%d_%H%M"))
         # Load Checkpoint or create new network
         #-----------------------------------------
         net = inception_v3(pretrained=False, num_classes=3, aux_logits=False)
@@ -51,7 +46,6 @@ def main(a):
             net.load_state_dict(torch.load(a.checkpoint))
         elif a.checkpoint != '':
             LogPrint("Cannot locate checkpoint!")
-            return
             # net = torch.load(a.checkpoint)
 
         trainparams = {}
@@ -60,8 +54,8 @@ def main(a):
             trainparams = ast.literal_eval(a.trainparams)
 
 
-        lr = trainparams['lr'] if trainparams.has_key('lr') else 1e-5
-        mm = trainparams['momentum'] if trainparams.has_key('momentum') else 0.01
+        lr = trainparams['lr'] if 'lr' in trainparams else 1e-5
+        mm = trainparams['momentum'] if 'momentum' in trainparams else 0.01
 
 
         criterion = nn.NLLLoss()
@@ -91,12 +85,6 @@ def main(a):
                 optimizer.step()
                 E.append(loss.data[0])
                 tqdm.write("\t[Step %04d] Loss: %.010f"%(index, loss.data[0]))
-                if a.plot:
-                    writer.add_scalar('Wraist/Loss', loss.data[0], i * len(loader) + index)
-                    v, d = torch.max(out, dim=1)
-                    accuracy = np.sum(g.data.cpu().numpy() == d.data.cpu().numpy()) / float(len(d))
-                    writer.add_scalar('Wraist/Accrucy', accuracy, i * len(loader) + index)
-                    # visualizeResults(s, out, g, "Wraist_%02d"%a.useCatagory)
 
             losses.append(E)
             if np.array(E).mean() <= lastloss:
@@ -110,7 +98,6 @@ def main(a):
                 for pg in optimizer.param_groups:
                     pg['lr'] = pg['lr'] * np.exp(-i * a.decay / float(a.epoch))
 
-        writer.close()
 
     # Evaluation mode
     else:

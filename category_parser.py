@@ -37,7 +37,7 @@ def category2string(catlist):
     Convert category list into string
     """
     d = {}
-    for i in xrange(max(catlist)):
+    for i in range(max(catlist)):
         d[i] = []
 
     for index, cat in enumerate(catlist):
@@ -105,7 +105,7 @@ def cat_list2slice_stack(catlist):
     largest_elements = max([l for L in catlist for l in L])
     assert total_elements == largest_elements, str(catlist)
 
-    stack = [-1 for i in xrange(total_elements)]
+    stack = [-1 for i in range(total_elements)]
     for cat, l in enumerate(catlist):
         for e in l:
             stack[e-1] = cat
@@ -117,7 +117,7 @@ def category_file_reader(filedir):
     categories = {}
     cat = pd.read_csv(filedir)
     for i, row in cat.iterrows():
-            categories[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in xrange(1,4)]
+            categories[row['Name']] = [parse_category_string(row[row.keys()[i]]) for i in range(1,4)]
     return categories
 
 

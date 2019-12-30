@@ -40,8 +40,6 @@ def main(a):
         loader      = DataLoader(trainingSet, batch_size=a.batchsize, shuffle=True, num_workers=4)
                                  # sampler=sampler.WeightedRandomSampler(np.ones(len(trainingSet)).tolist(), a.batchsize*100))
 
-        writer = SummaryWriter("/media/storage/PytorchRuns/WristSegment_"+datetime.datetime.now().strftime("%Y%m%d_%H%M"))
-        # writer = SummaryWriter("/media/storage/PytorchRuns/WristSegment_Cat%s_V2_DICE"%a.useCatagory)
         if a.useCatagory != 0:
             assert os.path.isfile(a.catagoriesIndex)
             inputDataset.UseCatagories(a.catagoriesIndex, a.useCatagory)
@@ -56,7 +54,6 @@ def main(a):
             net.load_state_dict(torch.load(a.checkpoint))
         elif a.checkpoint != '':
             LogPrint("Cannot locate checkpoint!")
-            return
             # net = torch.load(a.checkpoint)
 
         trainparams = {}
@@ -65,8 +62,8 @@ def main(a):
             trainparams = ast.literal_eval(a.trainparams)
 
 
-        lr = trainparams['lr'] if trainparams.has_key('lr') else 1e-5
-        mm = trainparams['momentum'] if trainparams.has_key('momentum') else 0.01
+        lr = trainparams['lr'] if 'lr' in trainparams else 1e-5
+        mm = trainparams['momentum'] if 'momentum' in trainparams else 0.01
 
         criterion = nn.NLLLoss2d()
         optimizer = optim.SGD([{'params': net.parameters(),
@@ -250,8 +247,7 @@ if __name__ == '__main__':
                         help="Path to a file with dictionary of training parameters written inside")
     parser.add_argument("--log", dest='log', action='store', type=str, default=None,
                         help="If specified, all the messages will be written to the specified file.")
-    parser.add_argument("--stage", dest='stage', default=1, action='store', type=int,
-                        help="Stage 1: Feature location, Stage2: TOCI classification")
+
     a = parser.parse_args()
 
     if a.log is None:
