@@ -12,10 +12,6 @@ import torch.nn.functional as F
 import torch
 from Networks import UNet
 from tqdm import tqdm
-import datetime
-
-from tensorboardX import SummaryWriter
-# import your own newtork
 
 def LogPrint(msg, level=20):
     logging.getLogger(__name__).log(level, msg)

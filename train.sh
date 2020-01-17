@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Fixed variables for relative directories
+TRAINING_DATA_DIR=./Data/Training
+GROUND_TRUTH_CATEGORIES=./Data/Training/category_labels.csv
+SEGMENTATION_GROUND_TRUTH=./Data/Segmentation
+
 show_help(){
     echo -e "Copyright (C) 2018-2019 by Lun M. Wong and others. The Chinese University of Hong Kong."
     echo -e ""
@@ -15,9 +20,9 @@ show_help(){
     echo -e "Directory:"
     echo -e " This software work with specified directories, meaning all the data and network states"
     echo -e " should be stored in specified folders. The specifications is as follow:"
-    echo -e " 1) Training data:             ./Data/Training"
-    echo -e " 2) Groundtruth categories:    ./Data/Training/category_labels.csv"
-    echo -e " 3) Segmentation groundtruth:  ./Data/Segmentation"
+    echo -e " 1) Training data:             $TRAINING_DATA_DIR"
+    echo -e " 2) Groundtruth categories:    $GROUND_TRUTH_CATEGORIES"
+    echo -e " 3) Segmentation groundtruth:  $SEGMENTATION_GROUND_TRUTH"
 
     echo ""
     echo -e "Usage:"
@@ -51,7 +56,7 @@ if [[ ${PIPESTATUS[0]} != 4 ]]; then
 fi
 
 OPTIONS=hc:o:s:
-LONGOPTS=help,checkpoint:,out-checkpoint:,step:
+LONGOPTS=help,checkpoint-dir:,out-checkpoint:,step:
 
 # -regarding ! and PIPESTATUS see above
 # -temporarily store output to be able to check for errors
@@ -71,10 +76,7 @@ CHECKPOINT_DIR=n
 OUTPUT_CHECKPOINT_DIR=n
 TRAINING_STEP=n
 
-# Fixed variables for relative directories
-TRAINING_DATA_DIR=./Data/Training
-GROUND_TRUTH_CATEGORIES=./Data/Training/category_labels.csv
-SEGMENTATION_GROUND_TRUTH=./Data/Segmentation
+
 
 # now enjoy the options in order and nicely split until we see --
 while true; do
@@ -83,7 +85,7 @@ while true; do
             show_help
             exit 0
             ;;
-        -c|--checkpoint)
+        -c|--checkpoint-dir)
             CHECKPOINT_DIR=$2
             shift
             ;;

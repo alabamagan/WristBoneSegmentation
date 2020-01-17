@@ -1,0 +1,7 @@
+torch>=1.2.0
+numpy>=1.17
+SimpleITK>=1.2.0
+scikit-image>=0.15.0
+pandas>=0.20
+configparser>=3.7.0
+
