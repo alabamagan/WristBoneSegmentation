@@ -138,7 +138,7 @@ def main(a):
                         s = s.cuda()
 
                     torch.no_grad()
-                    out = net.forward(s.unsqueeze(1))[0].squeeze() if a.stage == 1 else net.forward(s.permute(0, 3, 1, 2)[:,:2].float())
+                    out = net.forward(s.unsqueeze(1))[0].squeeze()
                     out = F.log_softmax(out, dim=1)
                     if out.data.dim() == 3:
                         val, seg = torch.max(out, 0)

@@ -4,10 +4,7 @@ import numpy as np
 import random
 import SimpleITK as sitk
 from torch.utils.data import Dataset, DataLoader
-import visdom
-from Algorithm import Utils
 
-vis = visdom.Visdom(port=80)
 
 class BatchLoader(Dataset):
     def __init__(self, rootdir, tonumpy=False):
@@ -137,7 +134,7 @@ class BatchLoader(Dataset):
         # Sort images into array of dictionaries
         self.length = len(imagefilenames)
         self.unique_samples = []
-        for i in xrange(self.length):
+        for i in range(self.length):
             ld = {}
             ld['im'] = self.root_dir + "/" + imagedir + "/" + imagefilenames[i]
             ld['imt1'] = self.root_dir + "/" + imageT1dir + '/' + imageT1filenames[i]
@@ -201,7 +198,7 @@ class BatchLoader(Dataset):
         for k in suffix:
             out[k] = None
 
-        for i in xrange(batchsize):
+        for i in range(batchsize):
             index = np.random.randint(0, self.__len__())
             ims = {}
             for k in suffix:

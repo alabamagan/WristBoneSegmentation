@@ -41,7 +41,7 @@ def category2string(catlist):
         d[i] = []
 
     for index, cat in enumerate(catlist):
-        if not d.has_key(cat):
+        if not cat in d:
             d[cat] = []
         d[cat].append(index)
 

@@ -53,5 +53,6 @@ Note that the name of checkpoints in this step is fixed to ```checkpoint_UNET_Ca
 |2| ...|...|...|
  
 
-
+## References
+1. Wong LM, Shi L, Xiao F, Griffith JF. Fully automated segmentation of wrist bones on T2-weighted fat-suppressed MR images in early rheumatoid arthritis. Quant Imaging Med Surg. 2019;9(4):579–589. doi:10.21037/qims.2019.04.03"
 
