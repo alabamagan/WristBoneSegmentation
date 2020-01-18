@@ -18,7 +18,22 @@ This repository host the replication of the code implemented and employed in the
 - configparser>=3.7.0
 
 
+## Using with Docker
 
+This repo has published a docker image, which can be used with nvidia-docker. Make sure you have nvidia-docker installed so that you can directly use the docker image. You can follow [this link](https://github.com/NVIDIA/nvidia-docker#ubuntu-16041804-debian-jessiestretchbuster) for the installation steps.
+
+Download the package image:
+```bash
+docker pull docker.pkg.github.com/alabamagan/wristbonesegmentation/wbs_docker:1.0.2
+```
+
+Please use the following command on a machine with at least 12gb GRAM:
+```bash
+# -v suggest your host /your/data directory is now connected to /Data of the container
+docker run -v /your/data:/Data --ipc=host --gpus all --ipc=host -it wrist_bone_segmentation
+```  
+
+You are now connected to the container session and you can go to the directory ```/root/Source/WristBoneSegmentation``` for your own application.
 
 ## Usage
 
@@ -45,7 +60,23 @@ Note that the name of checkpoints in this step is fixed to ```checkpoint_UNET_Ca
  ./train.sh -o [dir] -c [saved cp DIRECTORY (optional)] -s 1 
  ```
  
-#### Format of the csv file
+ ### Inference
+ 
+ After you have trained the networks, you can proceed to perform inference. Note that if you downloaded the docker image, you will found the networks to be already trained and were situated in the directory ```<source_root>/Backup```.
+ 
+ This time, there is no need to separate the process into two, simply use the following command:
+ 
+ ```bash
+./inference.sh -o [dir] -c [dir] -i [dir]
+```
+The output will be generated to the directory specified by the -o option, with each the same file name as the input.
+
+### Help
+
+ Using the ```-h``` option in both the script ```inference.sh``` and ```train.sh``` will allow you know more about the functionality of the algorithm.  
+ 
+ 
+### Format of the csv file
 
 |ID|Type A|Type B|Type C|
 |---|---|---|---|
