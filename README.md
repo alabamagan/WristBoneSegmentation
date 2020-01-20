@@ -8,6 +8,12 @@ However, the fully automatic segmentation of wrist bone in RA patients had prove
 
 This repository host the replication of the code implemented and employed in the article [1] that attempts to propose an automatic solution regarding this specific problem. 
 
+## License
+
+Copyright (c) 2019-2020 Lun M. Wong.
+
+The use of the this software should be abided by the MIT License.
+
 ## Prerequisite
 
 - torch>=1.2.0
